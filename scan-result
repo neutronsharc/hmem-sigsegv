@@ -1,0 +1,21 @@
+Hey James,  I can only run the scan test on a ocz ssd because the
+nodes with fusionio cards are being used by other students at my lab.
+
+For the scan test I allocated 500 k objects (32kB each) and 3
+iterations. Total data amount is 16GB, hybrid-mem uses an internal RAM
+cache = 32MB, so all accesses are to the SSD.
+
+The scan test on OCZ gives following results:
+
+hello hybrid-mem addr: 0x7fff45119a30
+cumu-time(sec): 332.298074
+per-iter time(sec): 110.766025
+avg access latency(sec): 0.000222
+access  throughput per sec: 4514.019537
+
+Here the avg access latency is 0.2 ms,  access throughput is about 4.5k/sec.
+
+
+The ocz drive I used is:
+ATA      OCZ Z-DRIVE R4 C 2.15 PQ: 0 ANSI: 5
+

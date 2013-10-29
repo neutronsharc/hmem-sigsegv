@@ -1,0 +1,598 @@
+
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////
+        HashTable:
+
+
+==== HashTbl: size=1048576, 1000000 it, load-factor=0.953674, 1997992 lookups, 1997992 hits, 951253 collision
+
+hash-tbl size = 1048576, has 1M items, 
+
+==== HashTbl: size=1048576, 1200000 it, load-factor=1.144409, 2398000 lookups, 2398000 hits, 1371330 collision, max-buck-col=8
+
+==== HashTbl: size=1048576, 1200000 it, load-factor=1.144409, 2398000 lookups, 2398000 hits, 1371330 collision, max-buck-col=8, min-buck-col=0
+
+
+==== HashTbl: size=1048576, 1200000 it, load-factor=1.144409, 4797952 lookups, 4797952 hits, 2742627 collision, max-buck-col=8, min-buck-col=0
+
+
+==== HashTbl: size=1048576, 500000 it, load-factor=0.476837, 1997952 lookups, 1997952 hits, 476437 collision, max-buck-col=6, min-buck-col=0
+
+
+
+///////////////////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////
+    sigseg  RAM-queeu: 
+
+
+    mem-q:  head=1197976, tail=1200024, num-units=2048, num-rel=1197976, rel-size=4906909696
+
+----  mem-q:  head=2397952, tail=2400000, num-units=2048, num-rel=2397952, rel-size=9822011392
+----  mem-q:  head=997952, tail=1000000, num-units=2048, num-rel=997952, rel-size=4087611392
+
+
+
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////
+    On-Demand paging:::
+
+    when accessing a virt-addr, OS may do on-demand paging to alloc a pg for it.
+   on each sigsegv,  OS alloc an on-demand pg. 
+
+        Only write-access will alloc a RAM pg::
+
+    ************* on WCI:    4KB pg 
+    on-demand pg cost:
+=== 1000000 on-demand pgs: 3162237.000000 usec, 3.162237 usec/pg
+=== 1000000 on-demand pgs: 3167860.000000 usec, 3.167860 usec/pg  
+
+=== 1000000 on-demand pgs: 687730.000000 usec, 0.687730 usec/pg  // read-access not alloc on-demand pg
+     
+
+    ********** on RI::  4KB pg
+=== 1000000 on-demand pgs: 1282925.000000 usec, 1.282925 usec/pg
+=== 1000000 on-demand pgs: 1262658.000000 usec, 1.262658 usec/pg
+
+
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////
+    madvise() to release RAM pg cost::
+
+
+    -------------- sigsegv handler can only keeps a small physical pgs in pg buffer, and madvise() to release vaddr-unit
+    each release is one pg size:
+
+    ************ on WCI:
+=== 1000000 madvise release RAM:  1114637.000000 usec, 1.114637 usec/rel
+=== 1000000 madvise release RAM:  1111801.000000 usec, 1.111801 usec/rel
+=== 1000000 madvise release RAM:  1110460.000000 usec, 1.110460 usec/rel
+
+
+    ************* on RI:
+=== 1000000 madvise release RAM:  718111.000000 usec, 0.718111 usec/rel
+=== 1000000 madvise release RAM:  730210.000000 usec, 0.730210 usec/rel
+
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////
+    mprotect()  overhead::   
+
+
+************* from wci::   unit =4KB, 
+=== 1000000 mprotect:  672816.000000 usec, 0.672816 usec/protect
+=== 1000000 mprotect:  699927.000000 usec, 0.699927 usec/protect
+=== 1000000 mprotect:  688143.000000 usec, 0.688143 usec/protect
+=== 1000000 mprotect:  689274.000000 usec, 0.689274 usec/protect
+
+
+
+    ********** on RI::  unit = 4KB
+=== 1000000 mprotect:  511401.000000 usec, 0.511401 usec/protect
+=== 1000000 mprotect:  526160.000000 usec, 0.526160 usec/protect
+
+
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////
+    lookup hash table in the slabcache::
+
+    ************** on wci::
+=== 1000000 slab-lookup, 395305.000000 usec, 0.395305 usec/lookup
+=== 1000000 slab-lookup, 394187.000000 usec, 0.394187 usec/lookup
+
+    --- if grab hashtbl's hash_lock :
+=== 1000000 slab-lookup, 448091.000000 usec, 0.448091 usec/lookup  
+=== 1000000 slab-lookup, 436091.000000 usec, 0.436091 usec/lookup    
+
+    ************** on RI:
+=== 1000000 slab-lookup, 240125.000000 usec, 0.240125 usec/lookup
+=== 1000000 slab-lookup, 240278.000000 usec, 0.240278 usec/lookup
+=== 1000000 slab-lookup, 240461.000000 usec, 0.240461 usec/lookup
+
+
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////
+    sigsegv fault deliver latency::  in a write-fault, OS instantiates the vaddr with RAM on a write
+access, then call the  fault handler.  
+
+
+    ********************** on wci::
+
+    read sig fault::  only unprotect the pg in handler
+=== 1000000 read sigsegv, 3999381.000000 usec, 3.999381 usec/fault
+=== 1000000 read sigsegv, 3985214.000000 usec, 3.985214 usec/fault
+=== 1000000 read sigsegv, 4017599.000000 usec, 4.017599 usec/fault
+
+    write-sig-fault:  only unprotect the pg in handler
+=== 1000000 write sigsegv, 6460196.000000 usec, 6.460196 usec/fault
+=== 1000000 write sigsegv, 6516611.000000 usec, 6.516611 usec/fault
+=== 1000000 write sigsegv, 6522554.000000 usec, 6.522554 usec/fault
+=== 1000000 write sigsegv, 6485184.000000 usec, 6.485184 usec/fault
+=== 1000000 write sigsegv, 6457284.000000 usec, 6.457284 usec/fault
+=== 1000000 write sigsegv, 6461942.000000 usec, 6.461942 usec/fault
+
+
+    ************************** on RI::
+
+    read-sig-fault:   only unprotect the pg in handler
+=== 1000000 read sigsegv, 2814861.000000 usec, 2.814861 usec/fault
+=== 1000000 read sigsegv, 2803339.000000 usec, 2.803339 usec/fault
+
+
+    write-sig-fault:   only unprotect the pg in handler
+=== 1000000 write sigsegv, 3957780.000000 usec, 3.957780 usec/fault
+=== 1000000 write sigsegv, 3956717.000000 usec, 3.956717 usec/fault
+
+
+
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////
+    overall vaddr access-overhead::  
+        slab is big enough:   Everydata in RAM,  objsize=1K
+
+
+    ***********************   from wci::
+
+        ---- alloc obj
+1200000 alloc, 1897725.000000 usec, 1.581438 usec/alloc
+500000 alloc, 760644.000000 usec, 1.521288 usec/write
+1000000 alloc, 1575061.000000 usec, 1.575061 usec/write
+=== 1000000 alloc, 1571780.000000 usec, 1.571780 usec/write
+=== 1000000 alloc, 1565315.000000 usec, 1.565315 usec/write
+=== 1000000 alloc, 1589417.000000 usec, 1.589417 usec/write
+=== 1000000 alloc, 1555233.000000 usec, 1.555233 usec/alloc
+=== 1000000 alloc, 1560138.000000 usec, 1.560138 usec/alloc
+=== 1000000 alloc, 1560526.000000 usec, 1.560526 usec/alloc
+
+=== 1000000 alloc, 1600068.000000 usec, 1.600068 usec/alloc
+
+        -------- free obj
+ Release 500000 objs:: 
+=== 500000 free, 639099.000000 usec, 1.278198 usec/free
+ Release 1000000 objs:: 
+=== 1000000 free, 1361173.000000 usec, 1.361173 usec/free
+ Release 1000000 objs:: 
+=== 1000000 free, 1387275.000000 usec, 1.387275 usec/free
+ Release 1000000 objs:: 
+=== 1000000 free, 2046593.000000 usec, 2.046593 usec/free
+=== 1000000 free, 2056569.000000 usec, 2.056569 usec/free
+ Release 1000000 objs:: 
+=== 1000000 free, 2063605.000000 usec, 2.063605 usec/free
+=== 1000000 free, 2056227.000000 usec, 2.056227 usec/free
+=== 1000000 free, 2054977.000000 usec, 2.054977 usec/free
+=== 1000000 free, 1850586.000000 usec, 1.850586 usec/free
+
+ Release 1000000 objs::  grab cache_lock ::
+=== 1000000 free, 1414018.000000 usec, 1.414018 usec/free  
+=== 1000000 free, 1402308.000000 usec, 1.402308 usec/free
+
+
+
+        --------    read access:  with:: load slab-obj, and  madvise() to release pg-cache RAM,
+500000 read-access, 6253688.000000 usec, 12.507376 usec/read
+1200000 read-access, 15145846.000000 usec, 12.621538 usec/read
+1200000 read-access, 15210260.000000 usec, 12.675217 usec/read
+1000000 read sigsegv, 12656364.000000 usec, 12.656364 usec/fault 
+1000000 read sigsegv, 12675867.000000 usec, 12.675867 usec/fault
+
+        --------     read access:  with::   madvise(),  don't load pg from slab
+=== 1000000 read sigsegv, 7058734.000000 usec, 7.058734 usec/fault // don't load pg from slab cache
+=== 1000000 read sigsegv, 8128063.000000 usec, 8.128063 usec/fault
+
+
+        -------- read access, without madvise() to release pg-cache, don't load data from slab-cache
+=== 1000000 read sigsegv, 4722494.000000 usec, 4.722494 usec/fault
+=== 1000000 read sigsegv, 4710577.000000 usec, 4.710577 usec/fault
+
+
+        --------     write access::  with:: load data from slabcache, and madvise() to release RAM in pg-cache
+1200000 write-access, 12984482.000000 usec, 10.820402 usec/write
+1200000 write-access, 12818989.000000 usec, 10.682491 usec/write
+500000 write-access, 5350325.000000 usec, 10.700650 usec/write
+1000000 write sigsegv, 11081703.000000 usec, 11.081703 usec/fault
+1000000 write sigsegv, 11045840.000000 usec, 11.045840 usec/fault
+1000000 write sigsegv, 11465002.000000 usec, 11.465002 usec/fault  
+1000000 write sigsegv, 11547801.000000 usec, 11.547801 usec/fault
+
+        ---------   write access,  don't do madvise() to release RAM in pg-cache, don't load data from slab-cache
+=== 1000000 write sigsegv, 7223478.000000 usec, 7.223478 usec/fault
+=== 1000000 write sigsegv, 7251064.000000 usec, 7.251064 usec/fault
+=== 1000000 write sigsegv, 7275839.000000 usec, 7.275839 usec/fault
+
+
+
+
+    ***************************** on RI:
+
+    --- alloc objs:
+=== 1000000 alloc, 961262.000000 usec, 0.961262 usec/alloc
+=== 1000000 alloc, 955433.000000 usec, 0.955433 usec/alloc
+=== 1000000 alloc, 938944.000000 usec, 0.938944 usec/alloc
+=== 1000000 alloc, 937360.000000 usec, 0.937360 usec/alloc
+
+
+    ---- free objs:
+=== 1000000 free, 1592907.000000 usec, 1.592907 usec/free
+=== 1000000 free, 1565030.000000 usec, 1.565030 usec/free
+=== 1000000 free, 933875.000000 usec, 0.933875 usec/free
+=== 1000000 free, 927772.000000 usec, 0.927772 usec/free
+
+
+    ---------- read objs:  with::  load data from slab cache, and madvise() to release ram
+=== 1000000 read sigsegv, 7786557.000000 usec, 7.786557 usec/fault
+=== 1000000 read sigsegv, 7669296.000000 usec, 7.669296 usec/fault
+=== 1000000 read sigsegv, 7831770.000000 usec, 7.831770 usec/fault
+=== 1000000 read sigsegv, 7691810.000000 usec, 7.691810 usec/fault
+
+
+    ---------- read objs:  with::  load data from slab cache, don't release ram
+=== 1000000 read sigsegv, 5237386.000000 usec, 5.237386 usec/fault
+
+
+    ---------  read objs:   the sig-handler only lookup item and vr, not load data from slab, not madvise() to release
+=== 1000000 read sigsegv, 3328588.000000 usec, 3.328588 usec/fault
+
+
+    ---------  write objs:  with::  load data from slab-cache, and madvise() to release ram
+=== 1000000 write sigsegv, 6885140.000000 usec, 6.885140 usec/fault
+=== 1000000 write sigsegv, 6885990.000000 usec, 6.885990 usec/fault
+=== 1000000 write sigsegv, 7014682.000000 usec, 7.014682 usec/fault
+=== 1000000 write sigsegv, 7404142.000000 usec, 7.404142 usec/fault
+=== 1000000 write sigsegv, 6947609.000000 usec, 6.947609 usec/fault
+
+
+    ---------- write objs:  with::  load data from slab cache, don't release ram 
+=== 1000000 write sigsegv, 4350026.000000 usec, 4.350026 usec/fault
+
+
+    ---------  write objs:   the sig-handler only lookup item and vr, not load data from slab, not madvise() to release
+=== 1000000 write sigsegv, 4582087.000000 usec, 4.582087 usec/fault
+
+    
+    --------   read+write:  memcpy(dst, src, sz) both dst and src are hybrid-mem:
+=== 1000000 memcpy(),  15670967.000000 usec, 15.670967 usec/each (rd+wr fault)
+
+
+
+
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    has implemented eviction & loading objs to/from files.
+
+    ************************ on wci,  hdd::
+
+    RAM-instantiate limit: max-usage=1048576, slab-cache=10MB, objsize=1KB
+
+=== 100000 alloc, 153712.000000 usec, 1.537120 usec/alloc
+=== 100000 write, 32275336.000000 usec, 322.753360 usec/write
+=== 100000 read, 32639630.000000 usec, 326.396300 usec/read
+=== 100000 free, 88963.000000 usec, 0.889630 usec/free
+
+
+    RAM-instantiate limit: max-usage=10485760, slabcache=10MB, objsize=16KB
+=== 10000 alloc, 27550.000000 usec, 2.755000 usec/alloc
+=== 10000 write, 27648182.000000 usec, 2764.818200 usec/write
+=== 10000 read, 17545192.000000 usec, 1754.519200 usec/read
+=== 10000 free, 13017.000000 usec, 1.301700 usec/free
+
+=== 20000 alloc, 41461.000000 usec, 2.073050 usec/alloc
+=== 20000 write, 59595513.000000 usec, 2979.775650 usec/write
+=== 20000 read, 31430409.000000 usec, 1571.520450 usec/read
+=== 20000 free, 23005.000000 usec, 1.150250 usec/free
+
+
+    ********************** on wci,  iodrive:
+
+     RAM-instantiate limit: max-usage=1048576,  slab-cache=10MB, objsize=1KB
+    
+=== 100000 alloc, 132020.000000 usec, 1.320200 usec/alloc
+=== 100000 write, 7031162.000000 usec, 70.311620 usec/write
+=== 100000 read, 7080394.000000 usec, 70.803940 usec/read
+=== 100000 free, 71730.000000 usec, 0.717300 usec/free
+
+     RAM-instantiate limit: max-usage=10485760, slab-cache=10MB,  objsize=16KB
+=== 10000 alloc, 21497.000000 usec, 2.149700 usec/alloc
+=== 10000 write, 2970923.000000 usec, 297.092300 usec/write
+=== 10000 read, 2106294.000000 usec, 210.629400 usec/read
+=== 10000 free, 10892.000000 usec, 1.089200 usec/free
+
+=== 20000 alloc, 33706.000000 usec, 1.685300 usec/alloc
+=== 20000 write, 5930829.000000 usec, 296.541450 usec/write
+=== 20000 read, 3611025.000000 usec, 180.551250 usec/read
+=== 20000 free, 18478.000000 usec, 0.923900 usec/free
+
+
+	
+	*******************
+    ***  RAM-instantiate limit: max-usage=20971520, ram-list-size=5120, objsize=16KB
+Experiments:
+1.  alloc 500 K objs, each obj=16KB, slab-unit size = 20KB.
+2.  prefault: write to each objs, across pg boundary in two pgs
+3.  write to each obj acrossing two pgs
+4.  Read each obj across two pgs.
+
+ ((  write/read across the pg boundary and spans two pgs ))
+
+
+
+   *******    Problems:   *******
+1. at write phase,  each obj causes two eviction, and two loads. This doubles the actual amount of IO.
+	(sovled.)
+	
+2. at read phase, there should be no writes since no dirty data. ???  Why there is eviction at read phase???
+	????????????
+The bug turns out to be:   when loading an item from ssd, its item-hdr's is_dirty value is still old value (1). 
+Shall clear this flag when loading it from file.
+
+3.  As of now, the slab-cache size should be > pg-buf size.
+Or more specifically, num of slots in slab-cache must > num of slots in pg-buf.
+	
+
+***** 500000 alloc, 619861.000000 usec, 1.239722 usec/alloc
+======= Evicts:  4798 evicts, 0 written to ssd, 10051694848 mem released
+====== Load Evicts:  loads=0, size=0
+
+***** prefault::  
+======= Evicts:  14364 evicts, 9959157760 written to ssd, 30092235264 mem released
+====== Load Evicts:  loads=0, size=0
+
+****  Write-fault::500000 write, 190253638.000000 usec, 380.507276 usec/write
+    (cumulative evicts and loads)
+======= Evicts:  33585 evicts, 30094154752 written to ssd, 50236315840 mem released
+====== Load Evicts:  loads=994880, size=20546492416
+
+****** Read fault:: **** 500000 read, 103733759.000000 usec, 207.467518 usec/read
+    (cumulative evicts and loads)
+======= Evicts:  43299 evicts, 40270074880 written to ssd, 60411614272 mem released
+====== Load Evicts:  loads=1500000, size=30971026432
+
+**** 500000 free, 371167.000000 usec, 0.742334 usec/free
+
+	
+		-------------------------	
+		*********** after a fix at sig-handler:  each write/read results in at most one evict+load.
+each unit touched in sig-handler is enqueued in pg-buf(ramQ), and its item's refcount is set >0, such that
+it won't be evicted to reclaim slabcache.  When an unit it dequeued from pg-buf, set its refcount to 0 s.t.
+its slab item can be evicted.
+
+	NOTE:: the r/w latency is about the same, regardless of if the access crosses a pg boundary.
+	
+***  RAM-instantiate limit: max-usage=5242880, ram-list-size=1280, slab-cache=20MB, objsize = 15KB (item size=15KB)
+***** 500000 alloc, 606966.000000 usec, 1.213932 usec/alloc
+
+======= Evicts:  3694 evicts, 0 written to ssd, 7731689760 mem released
+====== Load Evicts:  loads=0, size=0
+
+***** prefault:: 
+prefault::
+======= Evicts:  12015 evicts, 7731756544 written to ssd, 15483224640 mem released
+====== Load Evicts:  loads=0, size=0
+
+****  Write-fault::500000 write, 86939706.000000 usec, 173.879412 usec/write
+======= Evicts:  20349 evicts, 15484910080 written to ssd, 23235844800 mem released
+====== Load Evicts:  loads=500000, size=8004266496
+
+****** Read fault:: **** 500000 read, 83987987.000000 usec, 167.975974 usec/read
+======= Evicts:  28682 evicts, 23237133312 written to ssd, 30987534720 mem released
+====== Load Evicts:  loads=1000000, size=16008533504
+
+**** 500000 free, 356155.000000 usec, 0.712310 usec/free
+ will destroy slab "hybrid-mem"
+slabs_destroy:: free pre-alloc mem: 20971520
+
+
+	----------------------
+	***  RAM-instantiate limit: max-usage=5242880, ram-list-size=1280, objsize=3KB.
+	
+***** 500000 alloc, 633625.000000 usec, 1.267250 usec/alloc
+======= Evicts:  762 evicts, 0 written to ssd, 1603784448 mem released
+====== Load Evicts:  loads=0, size=0
+
+***** prefault:: 
+prefault::
+======= Evicts:  2300 evicts, 1604620800 written to ssd, 3227862400 mem released
+====== Load Evicts:  loads=0, size=0
+
+****  Write-fault::500000 write, 39997115.000000 usec, 79.994230 usec/write
+======= Evicts:  3848 evicts, 3229401600 written to ssd, 4851875392 mem released
+====== Load Evicts:  loads=500000, size=1879974912
+
+****** Read fault:: **** 500000 read, 35506901.000000 usec, 71.013802 usec/read
+======= Evicts:  5396 evicts, 4854182400 written to ssd, 6475888384 mem released
+====== Load Evicts:  loads=1000000, size=3759950336
+
+
+**** 500000 free, 345484.000000 usec, 0.690968 usec/free
+ will destroy slab "hybrid-mem"
+slabs_destroy:: free pre-alloc mem: 20971520
+
+
+
+    ---------------------------  has fixed the "addtional eviction write when reading" bug.
+
+    *****   write to SSD,  on wci::    objsize=15KB.
+
+***  RAM-instantiate limit: max-usage=1048576, ram-list-size=64,   objsize=15KB, slabcache=20MB
+***** 500000 alloc, 591730.000000 usec, 1.183460 usec/alloc
+
+======= Evicts:  3700 evicts, 0 items evicted. 0 written to ssd, 7744248000 mem released
+====== Loads:  load items=0, size=0
+
+
+***** prefault:: 
+prefault::
+======= Evicts:  7459 evicts, 499525 items evicted. 7745232384 written to ssd, 7752387600 mem released
+====== Loads:  load items=0, size=0
+
+****  Write-fault::500000 write, 88727297.000000 usec, 177.454594 usec/write
+======= Evicts:  7462 evicts, 499954 items evicted. 7751883776 written to ssd, 7751286816 mem released
+====== Loads:  load items=500000, size=8004775936
+
+****** Read fault:: **** 500000 read, 62068595.000000 usec, 124.137190 usec/read
+======= Evicts:  3708 evicts, 521 items evicted. 8078336 written to ssd, 7753612416 mem released
+====== Loads:  load items=500000, size=8004776448
+
+
+**** 500000 free, 357645.000000 usec, 0.715290 usec/free
+ will destroy slab "hybrid-mem"
+slabs_destroy:: free pre-alloc mem: 8388608
+
+
+    -----------    write to SSD on wci:   objsize=4KB
+***  RAM-instantiate limit: max-usage=1048576, ram-list-size=256,  slabcache=20MB
+
+***** 500000 alloc, 587386.000000 usec, 1.174772 usec/alloc
+======= Evicts:  768 evicts, 0 items evicted. 0 written to ssd, 1616412672 mem released
+====== Loads:  load items=0, size=0
+
+***** prefault:: 
+prefault::
+======= Evicts:  1544 evicts, 497676 items evicted. 1617216000 written to ssd, 1624038976 mem released
+====== Loads:  load items=0, size=0
+
+****  Write-fault::500000 write, 42474249.000000 usec, 84.948498 usec/write
+======= Evicts:  1548 evicts, 500004 items evicted. 1624780800 written to ssd, 1624012992 mem released
+====== Loads:  load items=500000, size=1879974912
+
+****** Read fault:: **** 500000 read, 35908569.000000 usec, 71.817138 usec/read
+======= Evicts:  775 evicts, 2320 items evicted. 7539200 written to ssd, 1623756400 mem released
+====== Loads:  load items=500000, size=1879975424
+
+**** 500000 free, 345257.000000 usec, 0.690514 usec/free
+
+
+        --------------   write to SSD on wci:   objsize=4KB
+***  RAM-instantiate limit: max-usage=1048576, ram-list-size=256,  slabcache=8MB
+
+***** 5000000 alloc, 5817230.000000 usec, 1.163446 usec/alloc
+======= Evicts:  7713 evicts, 0 items evicted. 0 written to ssd, 16233581952 mem released
+====== Loads:  load items=0, size=0
+
+
+***** prefault:: 
+prefault::
+======= Evicts:  15475 evicts, 4997456 items evicted. 16239411200 written to ssd, 16238155136 mem released
+====== Loads:  load items=0, size=0
+
+****  Write-fault::5000000 write, 416156933.000000 usec, 83.231387 usec/write
+======= Evicts:  15480 evicts, 5000040 items evicted. 16247808000 written to ssd, 16240129920 mem released
+====== Loads:  load items=5000000, size=18799752192
+
+****** Read fault:: **** 5000000 read, 314315618.000000 usec, 62.863124 usec/read
+======= Evicts:  7720 evicts, 2504 items evicted. 8137216 written to ssd, 16240925680 mem released
+====== Loads:  load items=5000000, size=18799752704
+
+**** 5000000 free, 3572933.000000 usec, 0.714587 usec/free
+
+
+
+
+    ----------------  write to hdd, on wci::  objsize=15KB
+
+***  RAM-instantiate limit: max-usage=1048576, ram-list-size=64,  objsize=15KB,   slabcache=20MB
+
+***** 500000 alloc, 598733.000000 usec, 1.197466 usec/alloc
+======= Evicts:  3700 evicts, 0 items evicted. 0 written to ssd, 7744248000 mem released
+====== Loads:  load items=0, size=0
+
+
+***** prefault:: 
+prefault::
+======= Evicts:  7459 evicts, 499525 items evicted. 7745232384 written to ssd, 7752387600 mem released
+====== Loads:  load items=0, size=0
+
+****  Write-fault::500000 write, 443298768.000000 usec, 886.597536 usec/write
+======= Evicts:  7462 evicts, 499954 items evicted. 7751883776 written to ssd, 7751286816 mem released
+====== Loads:  load items=500000, size=8004775936
+
+****** Read fault:: **** 500000 read, 173215678.000000 usec, 346.431356 usec/read
+======= Evicts:  3708 evicts, 521 items evicted. 8078336 written to ssd, 7753612416 mem released
+====== Loads:  load items=500000, size=8004776448
+
+**** 500000 free, 356422.000000 usec, 0.712844 usec/free
+ will destroy slab "hybrid-mem"
+slabs_destroy:: free pre-alloc mem: 8388608
+
+
+    -------------------  write to hdd on wci::   objszie=4KB
+
+***  RAM-instantiate limit: max-usage=1048576, ram-list-size=256
+***** 500000 alloc, 581768.000000 usec, 1.163536 usec/alloc
+======= Evicts:  768 evicts, 0 items evicted. 0 written to ssd, 1616412672 mem released
+====== Loads:  load items=0, size=0
+
+***** prefault:: 
+prefault::
+======= Evicts:  1544 evicts, 497676 items evicted. 1617216000 written to ssd, 1624038976 mem released
+====== Loads:  load items=0, size=0
+
+****  Write-fault::500000 write, 190910756.000000 usec, 381.821512 usec/write
+======= Evicts:  1548 evicts, 500004 items evicted. 1624780800 written to ssd, 1624012992 mem released
+====== Loads:  load items=500000, size=1879974912
+
+****** Read fault:: **** 500000 read, 103564239.000000 usec, 207.128478 usec/read
+======= Evicts:  775 evicts, 2320 items evicted. 7539200 written to ssd, 1623756400 mem released
+====== Loads:  load items=500000, size=1879975424
+
+**** 500000 free, 351154.000000 usec, 0.702308 usec/free
+
+
+==================================================================================================
+==================================================================================================
+=================================================
+
+
+has implemented coalesce-allocator.  Now can alloc a huge contiguous mem space, and access any portion inside this 
+space. 
+
+
+
+coalesce-allocator,  access each 4KB pg sequentially, different in-ram obj size: 
+
+
+    ---- alloc size = 1GB                           alloc-size = 10GB
+in-ram obj size =     16KB        4KB                   16KB        4KB
+
+latency (us)     
+(HDD) write           249/241        372/323           286.04/282.42   371.38/357.40
+      read            144/162         266/230          167.17          277.40/260.10
+    
+(SSD) write         51.34/54.14       89.26/99.46       51.91       90.85  
+      read          30.26/33.47       77.65/78          29.94       69.57
+
+

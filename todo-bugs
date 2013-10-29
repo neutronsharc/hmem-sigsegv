@@ -1,0 +1,16 @@
+
+
+1. at ram_release.c,  clear_ram_queue():
+ it->refcount = 0;
+==> should be :  it->refcount-- to dec its ref count by 1.
+
+Also, need to make sure it->refcount is inc properly when it is linked to the RAM-queue.
+
+2. ram_release.c, enqueue_ram_queue():
+
+line 306:  
+rethink the way to set it->refcount ...
+
+3. at ram_release.c:   enqueue_ram_queue():
+
+batch release multiple page-buffer to reduce overhead of locking...

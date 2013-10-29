@@ -1,0 +1,508 @@
+
+
+
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////
+ 	Now, hook up hybrid-mem into memcached.  Measure the real transaction throughput.
+ 	
+ 	
+memcached:  4 worker-thr: 
+buf=512MB,  has 20M rec, 1KB each ( 10GB data ),  then performs random get/set
+
+trans-throughput (op/s) at diff update-ratio (set:get ratio)
+updateratio		1proc		2proc		4proc			8proc (4/4/8) 			16proc (4/16)
+0			11593/		12453/	 10884/6593/3870? 		10267/10068/10370		11366/9347
+10%			12140/		12090/	 11638/12625/13434 		11298/11273/12185		12536/10593
+20%			13192/		12961/	 12405/10347/15020		12964/13401/11483		13952/12073
+30%			14238/		14423/	 13577/17214/17337		15715/14244/14113		15548/13460
+40%			15002/		16229/	 15215/19552/18585		16589/17193/14218		17903/15112
+50%			17447/		18991/	 17586/23435/21317		18598/18782/16532		19832/17343
+60%			21256/		23135/	 20758/26655/25485		22203/20312/21211		23245/20200
+70%			26895/		29301/	 24564/28066/27187		26384/25899/26455		27898/23752
+80%			32735/		37801/	 29939/34518/37070		34290/33201/31328		35506/28669
+90%			41979/		52601/	 41189/51307/52799		45080/42824/44657		45271/40149
+100%		60375/		81967/	 53992/91990/91952		57001/86896/87118		63656/99335
+
+
+
+
+
+		***************  hybrid-mem with memcached:  op latency
+		hybrid-mem uses Fusionio, use 512MB mem-cache, latency in us
+		hashtable use mem=1680841680 
+
+
+	recsize=1K,  40M rec:
+
+network		init-create		insert			search
+IB											94
+IPoIB		
+1g
+10g
+
+
+		---  IB verbs
+recordsize		init-create		insert				search      				
+											   											
+256		(42M rec)	13.553		13.387			91.437
+
+512		(40M rec)	15.529		14.877			98.533/ 92
+													
+1k		(20M rec)	16.789	  16.194			93.285
+
+2k		(15M rec)	21.354		19.861			102.648
+														
+4k		(10M rec)	32.220		31.434			125.573
+
+		**** IB:IPoIB:  insert:  2.9X-5.1X faster,   search:  1.5X-1.6X faster
+		**** IB:1G:  insert:  6.5X-8.2X faster,   search:  2.1X-2.3X faster
+		**** IB: 10G:   insert:  2.0X-2.9X faster,    search:   1.2X-1.5X faster
+		
+		
+	------ IPoIB: total 20M rec with mixed (256/512/1k/2k/4k), 30GB data
+		init: avg-insert = avg= 75.105 us
+		
+256					xxx			66.989			146.994
+512					xxx			68.821			149.242
+1k (20M rec)	71.400/71.490	71.118/71.256/70.221		143.231/154.384/152.806
+2k					xxx			77.495			175.299
+4k					xx			89.367			188.273
+
+
+	------ 1G::   total 20M rec with mixed (256/512/1k/2k/4k), 30GB data
+	init:  avg= 148.765 us / item
+256			xx				106.462			203.333
+512			xx				107.917			212.168
+1k			xx				152.508			213.123
+2k			xx				157.961			239.164
+4k			xxx				200.004			265.291
+
+
+	------ 10G:: total 20M rec with mixed (256/512/1k/2k/4k), 30GB data
+	init:  avg= 48.008 us / item
+256			xxx				37.665			120.748
+512			xxx				39.108			124.649
+
+1k		(20M rec)	71.400	71.118			143.231
+			xxx				47.096			132.976
+			
+2k			xxx				51.900			136.272
+4k			xxx				65.326			148.397
+
+
+
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////
+has integrated ram-ssd hybrid mem into memcached:
+
+
+	**************************
+	1M rec,  1KB each,  memcached=512M, with HDD
+***** will create 1000000 items as base, item-size=1020
+create 1000000 items: total-time= 16331362.000000 us,  avg= 16.331 us / item
+***** will set 10000 items, item-size=1020
+set 10000 items: total-time= 179247.000000 us,  avg= 17.925 us / item
+***** will search 10000 items
+get 10000 items: total-time= 32559567.000000 us,  avg= 3255.957 us / item
+[wci27:~/memcached/incr/memcached/client/libmemcached-0.45]./mybuild 
+
+
+
+	**************************
+	20M rec, 1KB each,   memcached use 512MB memcache, with HDD	
+***** will create 20000000 items as base, item-size=1020
+create 20000000 items: total-time= 448177925.000000 us,  avg= 22.409 us / item
+***** will set 10000 items, item-size=1020
+set 10000 items: total-time= 208158.000000 us,  avg= 20.816 us / item
+***** will search 10000 items
+get 10000 items: total-time= 88186961.000000 us,  avg= 8818.696 us / item
+
+
+
+
+
+
+
+
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////
+
+	hybrid-mem:     basic test of latency (us)
+create 20M records of diff-size,  then: randomly insert 1M / search 1M / del 1M records
+
+		******************************
+		****  hybrid-mem, Fusionio, use 512MB mem-cache, latency in us
+		hashtable use mem=1680841680 
+
+
+recordsize	init-create		insert				search			del      				
+128			3.980/4.242		2.673/2.692			58.585			75.203/79.572
+											  (cache-hit=512M/2560M)	
+											   77.744 (cache-hit=10%)	
+											   											
+256			4.304/4.113		2.884/2.937			65.332/62.980= 64.15		73.339/60.106
+
+512			4.450/4.485/4.802	3.494/3.519/3.499	 80.741/76.298/72.569	71.671/68.039
+													avg= 72.56
+													
+1k			5.343/5.548		4.683/4.551			84.183/76.367	79.754
+													 = 76.36
+													 
+2k			7.29/7.329		6.971/6.641			81.084/81.301			72.953
+													= 81.2	
+														
+4k			11.119/11.15	10.637/10.565		93.140/98.253 = 95.69
+
+        
+    ***************************
+	hybrid-mem:  operations / second throughput test: memcache=512MB
+    has 20M rec, 1KB each, then M threads, each thread performs random search/insert
+
+update-ratio        1thr    2thr        4thr        8thr
+0           12453           3457/3374        3471
+10          15965           15207/15371     15673
+20          18129           17382/17396     17243
+30          21217           19522/19582     20191
+40          24929           22148/22675     22829
+50          27188           26601/26217     26690
+60          32612           31171/32468     32314
+70          42823           38463/41420     40468
+80          62388           54846           55849
+90          99507           86111           84898
+100         217258          228885          215246
+	
+
+
+
+
+
+		******************************
+		**		hybrid-mem: use record-size=1K,  change mem-cache size so as the cache-hit ratio for search:
+		use 10M records, record-size=1kB, total-data=10G, 
+
+
+memcache-size   cache-hit		search-lat(us)		create-lat
+100M			1%				81.566				4.532
+256M			2.5%			80.782				4.558
+512M			5%				68.815/79.456   	4.476	/4.434
+								 ==> 76.36
+1024M			10%				70.577				4.490
+2048M			20%				69.728				4.629
+3072M			30%				55.515/58.762=57.13				4.498
+		
+
+
+
+
+		******************************
+		****** use mmap() on fusionio, use all mem, 20M record
+slabs "hybrid-mem": num-of-slab=14, use-mmap=1, pre-allocated=75161927680, used-mem=61850255360
+slabclass[6]: item-size=4096, item-perslab=256, in-mem-items=15100000, 
+
+
+recordsize		insert			search
+256			3.1			158.2
+512			5.3			468
+1k		31.5		619
+2k		51.5		1423
+4k		259			2126
+
+recordsize		init-create		insert			search		del
+
+128			3.884			2.311			1.764   (20M records)
+			4.384			2.651			187.687	(40M records)
+slabs "hybrid-mem": num-of-slab=14, use-mmap=1, pre-allocated=75161927680, used-mem=2579496960
+slabclass[1]: item-size=128, item-perslab=8192, in-mem-items=20150000, slot_total=0, slot_curr=0, slabs=2460, 
+slabs "lookup-table": num-of-slab=11, mem_limit=3221225472, alloced-mem=1612685280
+slabclass[1]: item-size=80, item-perslab=13107, in-mem-items=20150000, slot_total=0, slot_curr=0, slabs=1538,
+
+slabs "hybrid-mem": num-of-slab=14, use-mmap=1, pre-allocated=75161927680, used-mem=5140119552
+slabclass[1]: item-size=128, item-perslab=8192, in-mem-items=40150000, slot_total=0, slot_curr=0, slabs=4902,
+slabs "lookup-table": num-of-slab=11, mem_limit=3774873600, alloced-mem=3212787840
+slabclass[1]: item-size=80, item-perslab=13107, in-mem-items=40150000, slot_total=0, slot_curr=0, slabs=3064
+
+
+
+256			4.779			2.731			150.479			(20M records)
+			4.705			3.437			1368.456		(40M rec)
+			5.258			2.790			158.257			(30M records)
+			4.6				xxx				171.500		(35M rec)
+slabs "lookup-table": num-of-slab=11, mem_limit=3221225472, alloced-mem=1612685280
+slabs "hybrid-mem": num-of-slab=14, use-mmap=1, pre-allocated=75161927680, used-mem=5158993920
+slabclass[2]: item-size=256, item-perslab=4096, in-mem-items=20150000, slot_total=0, slot_curr=0, slabs=4920,
+slabs "hybrid-mem": num-of-slab=14, use-mmap=1, pre-allocated=75161927680, used-mem=10279190528
+
+slabclass[2]: item-size=256, item-perslab=4096, in-mem-items=40150000, slot_total=0, slot_curr=0, slabs=9803, 
+slabs "lookup-table": num-of-slab=11, mem_limit=3565158400, alloced-mem=3212787840
+slabclass[1]: item-size=80, item-perslab=13107, in-mem-items=40150000, slot_total=0, slot_curr=0, slabs=3064, 
+
+slabs "hybrid-mem": num-of-slab=14, use-mmap=1, pre-allocated=75161927680, used-mem=7718567936
+slabclass[2]: item-size=256, item-perslab=4096, in-mem-items=30150000, slot_total=0, slot_curr=0, slabs=7361, 
+slabs "lookup-table": num-of-slab=11, mem_limit=3145728000, alloced-mem=2412736560
+slabclass[1]: item-size=80, item-perslab=13107, in-mem-items=30150000, slot_total=0, slot_curr=0, slabs=2301, 
+
+
+
+512			5.555			3.377			1359.737 (30M rec)
+			4.750			3.625			954.254	(20M rec)  ==>
+			4.644			3.194			590.492	(20M rec)
+			4.407			6.125			383.590 (25M rec)
+			4.453			5.349			432.417	(25M rec)
+			5.273			xx				217 (30M rec) 	==> 217
+			
+slabs "hybrid-mem": num-of-slab=14, use-mmap=1, pre-allocated=75161927680, used-mem=15463350272
+slabclass[3]: item-size=512, item-perslab=2048, in-mem-items=30200000, slot_total=0, slot_curr=0
+slabs "hybrid-mem": num-of-slab=14, use-mmap=1, pre-allocated=75161927680, used-mem=12877561856
+slabclass[3]: item-size=512, item-perslab=2048, in-mem-items=25150000, slot_total=0, slot_curr=0
+slabs "hybrid-mem": num-of-slab=14, use-mmap=1, pre-allocated=75161927680, used-mem=10316939264
+slabclass[3]: item-size=512, item-perslab=2048, in-mem-items=20150000, slot_total=0, slot_curr=0, slabs=9839,
+
+
+1k			25.426			25.629	==> 31.5	503.089		(20M rec) ==>
+			25.055			38.374				736.862		(20M rec)
+			22.318			xx					271.412		(25M rec)  ==> 271
+			
+slabs "hybrid-mem": num-of-slab=14, use-mmap=1, pre-allocated=75161927680, used-mem=20582498304
+slabclass[4]: item-size=1024, item-perslab=1024, in-mem-items=20100000, 
+
+2k			31.857			18.383	==> 51.5		609.636		(15M rec)
+			31.939			56.240			2152.439	(20M rec)
+			49.113			903.053			3295.068	(20M rec)
+			30.855			47.112			1423.744	(20M rec)
+			37.464			xxx				250 / 330 (10M rec)  ==> 310
+			
+slabs "hybrid-mem": num-of-slab=14, use-mmap=1, pre-allocated=75161927680, used-mem=31540117504
+slabclass[5]: item-size=2048, item-perslab=512, in-mem-items=15400000,
+slabs "hybrid-mem": num-of-slab=14, use-mmap=1, pre-allocated=75161927680, used-mem=41779462144
+slabclass[5]: item-size=2048, item-perslab=512, in-mem-items=20400000
+
+4k			99.251			259.548 => 259.		3839.634	(15M rec) ==>2126
+			84.128			259.467			2126.812	(15M rec)
+			94.704			1831.225		4112.762	(15M rec)
+			57.193			xxx				358		(8M rec)  ==> 358
+			79.881			276.531			875.729 (15M )		
+slabs "hybrid-mem": num-of-slab=14, use-mmap=1, pre-allocated=75161927680, used-mem=61850255360
+slabclass[6]: item-size=4096, item-perslab=256, in-mem-items=15100000, 
+
+slabs "hybrid-mem": num-of-slab=14, use-mmap=1, pre-allocated=75161927680, used-mem=61850255360
+slabclass[6]: item-size=4096, item-perslab=256, in-mem-items=15100000, slot_total=0, slot_curr=0, slabs=58985, 
+slabs "lookup-table": num-of-slab=11, mem_limit=2621440000, alloced-mem=1249866360
+slabclass[1]: item-size=80, item-perslab=13107, in-mem-items=10000000, slot_total=0, slot_curr=0, slabs=763,
+slabclass[2]: item-size=88, item-perslab=11915, in-mem-items=5100000, slot_total=0, slot_curr=0, slabs=429,
+
+
+
+		******************************
+		********* file	random-read lantency (us):  O_DIRECT, rand-read
+40GB file, seek to a random-offset, perform read of certain size.
+record-size<512 is converted to 512, since o-direct supports >= 512
+device			HDD				fusionio
+record-size:
+128			6626/6526			69/73/75
+256			6937/6774			69/73/75
+512			6824/6552			69/73/74
+1k			6837/6697			69/74/73
+2k			6789/6732			72/75/74
+4k			6771/6765			79/61/78
+
+
+
+
+///////////////////////////////////////////////////
+///////////////////////////////////////////////////
+
+init mem-alloc records using mem:
+
+alloc items with value size {512, 1k, 2k, 3k, 4k} in round-robin manner, key "key_%d"
+
+
+record_num      key-slab-alloc-mem-size      value-slab-alloc-mem-size
+500k            40893840        1230125328
+1000k           80739120        2458156440
+1500k           120584400       3686187552
+
+
+
+latency in us:
+record_num    item-allc    item-get     item-delete
+500k    4.495       0.678       1.169
+1000k   4.622       0.685       1.193
+1500k   4.34/4.379   0.738/0.738           1.228/1.272
+
+
+
+
+//////////////////////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////////////////////////
+
+hybird-mem-alloc : use hdd as storage,  
+
+alloc item size = 1k, value-memory=256MB
+
+( alloc 1000k item in sequential key (key_%d), then seq lookup, then delete: )
+
+	****	item-size=1k
+record_num      key-slab-alloc-mem-size      value-slab-alloc-mem-size
+1m: 			80739120			268247040
+10m				800051280			268247040
+
+latency in us:
+record_num    item-allc    		item-get     item-delete
+1m			31.567/31.707     239.905/235.098 		239.770/209.372
+10m			291.275				272.047 			251.381
+			(total 2912 sec)  (total = 2720 sec)  (total = 2513 sec)
+			
+slab-file size:
+1m:			1.2G
+10m:		12G
+
+
+	****  item-size=4k:
+record_num      key-slab-alloc-mem-size      value-slab-alloc-mem-size
+1000k: 			80739120			267550720
+
+latency in us:
+record_num    item-allc    		item-get     item-delete
+1000k			148.129			324.081		141.302
+
+
+	**** item-size=1k,2k,3k,4k round robin
+latency in us:
+record_num    item-allc    		item-get     item-delete
+1000k			90.247			314.379		227.551
+
+
+
+( alloc 1000k item in sequential key (key_%d), then lookup in reverse order, then seq delete )
+	***  lookup has more mem-hit since it reads backwards ...	
+	***  item-size=1k:	
+record_num      key-slab-alloc-mem-size      value-slab-alloc-mem-size
+1000k: 			80739120			268247040
+latency in us:
+record_num    item-allc    		item-get     item-delete
+1000k			31.276      163.136  		207.171
+
+
+
+		********
+value size = 1kB,    main-mem=6GB,  value-slab uses mem = 4500MB,
+	(seq create, seq search, seq delete)
+
+record-num				500k			1m     10m
+
+item-alloc(us)									15.914/16.388
+item-get(us)									262.733
+item-delete(us)									218.985
+lookup-slab-size		40893840	80739120	800051280
+value-slab-size			592029600	1184059200	4718423520(4500MB)
+
+
+    ************* on storage01, HDD, 6GB mem, value-slab uses 2000 MB
+creat 10M records(1kB size),  then randomly add 500k / get 500k / del 500k records
+
+record-num              10M
+item-alloc(us)          14.401(create 10M), 14.652(add 500k)
+item-get(us)            6698.110 (get 500k)
+item-del(us)            6728.569 (del 500k)
+
+lookup-slabsize         840945120
+value-slabsize          2096727840
+
+
+	******** on storage01, fusionio-iodrv:  
+    value size = 1kB,    main-mem=5GB,  value-slab uses mem = 1800 MB,
+	(seq create, random  search, seq delete)
+
+record-num				500k			1m     10m
+
+item-alloc(us)									3.993 / 4.016
+item-get(us)									58.827 / 56.277 
+item-delete(us)									38.024(seq delete all) /  52.837(rand del 50K rec)
+lookup-slab-size		40893840	80739120	800051280
+value-slab-size			592029600	1184059200	1800 MB
+
+    
+	******** on storage01, fusionio-iodrv, main-mem=6GB,  
+    record-size = 1k,  value-slab uses mem = 2000 MB, 
+    create 10M records as base, then randomly add 500k / get 500k / del 500k
+
+record-num              10M
+item-alloc(us)          3.980(creat 10M),  4.047(500k)
+item-get(us)            58.013
+item-del(us)            55.893
+lookup-slabsize         840945120
+value-slabsize          2096727840
+
+
+//////////////////////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////////////////////////
+  value-slab-allocator uses a file-mmap (HDD):  the file is mapped to a virtual mem,
+  and slabs acquires mem from this mmap'ed address space. 
+
+    ***  
+   see heavy cost in kswapd (~10% cpu),  also iodrv driver uses a lot mem for metadata.
+    test prog uses most of the mem for file buffer of the mmap() file data
+
+   --------- storage01:   main-mem=5GB
+    value size = 1kB,  uses all host mem  (HDD) (seq create, seq search, seq delete)
+	
+record-num				500k			1m     10m
+
+item-alloc(us)			4.272		4.491		44.549 / 30.177  (seq create) / 19.493(seq)
+item-get(us)			1.104		1.126		106.439(seq search) / 6543.681 (rand search) / 
+
+item-delete(us)			1.138		1.185		7.533 (seq del) / 2.047 (rand del)
+
+lookup-slab-size		40893840	80739120	800051280
+value-slab-size			592029600	1184059200	11840592000
+
+
+    -------- storage01: value size = 1kB,    main-mem=6GB, uses all host mem  (HDD), 
+record-size=1k, create 10M records as base ( size ~ 12GB), then randomly add 200k / get 100k / del 200k
+
+record-num              10M
+item-alloc(us)      13.455(creat 10M), 19.493 (add 200k) / 48.720(creat 10M),20.655(add 500k)
+                        49.777(creat 10M), 95.090(add 5k) / 46.054(creat 12M), 26.028(add 5k) (avg == 23.34)
+                        
+item-get(us)        5605.131 (rand)
+item-del(us)        1.314 (rand) / 2.053(rand del 500k) / 95.916(del 5k) / 115.582(random del 5k) / 123.069 (avg=111.5)
+lookup-slab-size        816828240
+value-slab-size         (61% mem - lookup-slab)
+
+record-num:     30M
+item-alloc:         41.638(creat 30M), 245.453(search 5k)
+item-del:           511.524(rand-del 5k)
+
+lookup-slab-size:   2401202400
+value-slab-size:    35525967360
+
+   *********
+   on storage01:  use fusion-io drv to do mmap() as 20GB, main-mem=5GB
+   value size = 1kB,   5GB, uses all host mem
+	(seq create 10m records, random search 1M records , seq delete 10M records)
+	
+record-num				500k			1m     10m
+item-alloc(us)		                            3.713 / 4.980 / 4.654 / 6.484
+item-get(us)			                        810.135  / 796.295
+item-delete(us)			        				4.631 (seq del, one read can prefetch many other records)
+                                                355.574 (random delete)
+lookup-slab-size		40893840	80739120	800051280
+value-slab-size			592029600	1184059200  (all avail mem - fusionio mem)	
+
+
+
+   *********
+   on storage01:  use fusion-io drv to do mmap() as 20GB, main-mem=6GB
+create 10M records as base ( size ~ 12GB), then randomly add 200k / search 100k / del 200k
+   value size = 1kB,    uses all host mem
+
+record-num              10M
+item-alloc(us)          5.921(create 10M), 3.215(add 500k)
+item-get(us)            596.182
+item-del(us)            58.925
+
+lookup-slabsize
+value-slabsize
+
+
