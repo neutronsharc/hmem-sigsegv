@@ -31,11 +31,6 @@ class SigSegvHandler {
 
   // A copy of the old handler.
   struct sigaction old_action_;
-
 };
-
-extern uint64_t number_page_faults;
-
-uint64_t GetNumberOfPageFaults();
 
 #endif  // SIGSEGV_HANDLER_H_

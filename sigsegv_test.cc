@@ -11,7 +11,7 @@
 
 static void TestSigseg() {
   SigSegvHandler handler;
-  assert(handler.InstallHandler() == true);
+  assert(handler.InstallHandler(NULL) == true);
 
   // NOTE::  in order to malloc huge size, shall let linux kernel use:
   // sysctl -w vm.overcommit_memory=1

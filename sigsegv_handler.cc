@@ -7,11 +7,6 @@
 #include "debug.h"
 #include "sigsegv_handler.h"
 
-// Number of page faults.
-uint64_t number_page_faults;
-
-uint64_t GetNumberOfPageFaults() { return number_page_faults; }
-
 static void InitSigsegvSigaction(struct sigaction* action) {
   // TODO: why we should block most signals while SIGSEGV is processed?
   //
@@ -108,7 +103,6 @@ bool SigSegvHandler::InstallHandler(signal_handler_t handler) {
     return false;
   }
   have_installed_handler_ = true;
-  number_page_faults = 0;
   return true;
 }
 

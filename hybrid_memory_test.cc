@@ -6,7 +6,6 @@
 
 #include "debug.h"
 #include "hybrid_memory.h"
-#include "sigsegv_handler.h"
 
 static void TestHybridMemory() {
   uint32_t num_hmem_instances = 16;

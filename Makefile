@@ -1,4 +1,4 @@
-CC = g++ -g
+CC = g++ -O3
 
 INC = -I. -I/home/ouyangx/tools/install-libevent-2.0.10/include/
 #-I/home/ouyangx/memcached/install-libmemcached-0.44/include 
@@ -22,5 +22,3 @@ newhmem : hybrid_memory_test.o ${objs}
 
 clean :
 	rm -f *.o ${exe} ${objs}
-
-

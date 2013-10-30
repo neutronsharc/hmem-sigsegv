@@ -94,6 +94,10 @@ HybridMemory* HybridMemoryGroup::GetHybridMemory(uint64_t offset_address) {
 static HybridMemoryGroup hmem_group;
 static VAddressRangeGroup vaddr_range_group;
 static SigSegvHandler sigsegv_handler;
+// Number of page faults.
+static uint64_t number_page_faults;
+
+uint64_t GetNumberOfPageFaults() { return number_page_faults; }
 
 bool InitHybridMemory(const std::string& ssd_dirpath,
                       const std::string& hmem_group_name,
