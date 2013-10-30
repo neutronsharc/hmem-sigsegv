@@ -1,32 +1,33 @@
-#ifndef __MYDEBUG__
-#define __MYDEBUG__
+#ifndef MYDEBUG_H_
+#define MYDEBUG_H_
 
-#include "assert.h"
+#include <stdio.h>
+#include <assert.h>
 
-#define MYDBG 0
-
+#define MYDBG 1
 
 #if MYDBG
-	#define dbg(fmt, args... )	do { \
-	fprintf(stderr, "%s: "fmt, __func__, ##args); fflush(stderr); \
-	}while(0)
+#define dbg(fmt, args...)                          \
+  do {                                             \
+    fprintf(stderr, "%s: " fmt, __func__, ##args); \
+    fflush(stderr);                                \
+  } while (0)
 #else
-	#define dbg(fmt, args... )
+#define dbg(fmt, args...)
 #endif
-		
-#define error(fmt, args... )	do { \
-	fprintf(stderr, "%s: Error!!  "fmt, __func__, ##args );	 fflush(stderr); \
-	}while(0)
 
-#define err(fmt, args... )	error(fmt, ##args)
+#define error(fmt, args...)                                 \
+  do {                                                      \
+    fprintf(stderr, "%s: Error!!  " fmt, __func__, ##args); \
+    fflush(stderr);                                         \
+  } while (0)
 
+#define err(fmt, args...) error(fmt, ##args)
 
-#define err_exit(fmt, args... )	 do { \
-	error(fmt, ##args); assert(0); } while(0)
+#define err_exit(fmt, args...) \
+  do {                         \
+    error(fmt, ##args);        \
+    assert(0);                 \
+  } while (0)
 
-
-//#undef MYDBG
-
-
-
-#endif  /// end of __MYDEBUG__
+#endif  // MYDEBUG_H_

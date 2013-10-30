@@ -1,54 +1,61 @@
-#ifndef __AVL_H__
-#define __AVL_H__
-
+#ifndef AVL_H_
+#define AVL_H_
 
 #include <pthread.h>
+#include <stdint.h>
 
+class VAddressRange;
 
+// A balanced binary search tree.
+typedef struct avl_tree_s {
+  // R/W lock to protect the tree.
+  pthread_rwlock_t rwlock;
+  // Root of this tree. It's actually an AVLNode.
+  void* tree;
+  int num_nodes;
+} AVLTree;
 
-/*
-a balanced bst
-*/
-typedef struct avl_tree_s
-{
-    pthread_rwlock_t    rwlock;
+// a tree node of the AVL tree.
+typedef struct AVLNode_s {
+  // AVL tree management.
+  struct AVLNode_s* left;
+  struct AVLNode_s* right;
+  unsigned int height;
 
-    void* tree;
-    int num_nodes;
+  // key to identify a node
+  uint64_t address;
+  uint64_t len;
+  // This tree-node is embedded into this object.
+  VAddressRange *embedding_object;
+} AVLNode;
 
-}avl_tree_t;
+// Traverse the BST layer by layer, and put all tree nodes in the
+// array q[].
+// q[] size is "qlen".  "lvl" will be set to tree height.
+// Return number of tree nodes.
+int level_traverse_avl_tree(AVLTree* avl, AVLNode* q[],
+                            int qlen, int* lvl);
 
+void dump_avl_node(AVLNode* node);
 
-/*
-a tree node of the AVL tree.
-*/
-typedef struct avl_node_s
-{
-    //// AVL tree management.
-    struct avl_node_s *left;
-    struct avl_node_s *right;
-    unsigned int height;
+void dump_avl_tree(AVLTree* avl);
 
-    //// key to identify a node
-    unsigned long address;
-    unsigned long len;
+// Dump all nodes in the BST.
+void get_all_avl_nodes(AVLTree* avl);
 
-    ///  More options:  User handler.
-    //void *handler_arg;
-}avl_node_t;
+// Init an BST.
+void InitAVL(AVLTree* avl);
 
-int level_traverse_avl_tree(avl_tree_t* avl, avl_node_t *q[], int qlen, int *lvl);
+// Destory an BST.
+void DestoryAVL(AVLTree* avl);
 
+// Insert a new node into the BST.
+int InsertNode(AVLTree *avl, AVLNode* newnode);
 
-int insert( avl_tree_t *avl, avl_node_t* newnode);
-void    delete(avl_tree_t *avl, avl_node_t* node);
-avl_node_t* find(avl_tree_t *avl, unsigned long key);
+// Remove an existing node from BST.
+void DeleteNode(AVLTree *avl, AVLNode* node);
 
+// Find a node such that, (key) is within the range [node->address, length).
+AVLNode* FindNode(AVLTree *avl, uint64_t key);
 
-
-
-void    dump_avl_node(avl_node_t* node);
-
-
-
-#endif // __AVL_H__
+#endif  // AVL_H__
