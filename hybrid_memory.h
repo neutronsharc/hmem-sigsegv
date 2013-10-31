@@ -37,6 +37,8 @@ class HybridMemory {
                            uint32_t size,
                            uint32_t vaddr_range_id);
 
+  uint32_t GetInstanceId() const { return hmem_instance_id_; }
+
  protected:
   pthread_mutex_t lock_;
 

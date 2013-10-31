@@ -28,7 +28,7 @@ bool HybridMemory::Init(const std::string &ssd_filename,
   pthread_mutex_init(&lock_, NULL);
   // TODO: allocate buffers.
 
-  page_buffer_.Init(page_buffer_size >> PAGE_BITS);
+  page_buffer_.Init((page_buffer_size >> PAGE_BITS) + 1);
   return true;
 }
 
@@ -151,16 +151,24 @@ static void SigSegvAction(int sig, siginfo_t* sig_info, void* ucontext) {
   ++number_page_faults;
   // Violating virtual address.
   uint8_t* fault_address = (uint8_t*)sig_info->si_addr;
-  uint8_t* fault_page =
-      (uint8_t*)(((uint64_t)fault_address) & ~((1ULL << 12) - 1));
+  if (!fault_address) {  // Invalid address, shall exit now.
+    err("Invalid address=%p\n", fault_address);
+    // Restore default handler for sigsegv.
+    signal(SIGSEGV, SIG_DFL);
+    // Issue a signal.
+    kill(getpid(), SIGSEGV);
+    return;
+  }
+
+  uint8_t* fault_page = (uint8_t*)((uint64_t)fault_address & PAGE_MASK);
   ucontext_t* context = (ucontext_t*)ucontext;
 
   // PC pointer value.
   unsigned char* pc = (unsigned char*)context->uc_mcontext.gregs[REG_RIP];
 
   // rwerror:  0: read, 2: write
-  int rwerror = context->uc_mcontext.gregs[REG_ERR] & 2;
-  if (number_page_faults % 100000 == 0) {
+  int rwerror = context->uc_mcontext.gregs[REG_ERR] & 0x02;
+  if (number_page_faults % 1000000 == 0) {
     dbg("Got SIGSEGV at address %p, page %p, pc %p, rw=%d\n",
         fault_address,
         fault_page,
@@ -168,53 +176,60 @@ static void SigSegvAction(int sig, siginfo_t* sig_info, void* ucontext) {
         rwerror);
   }
 
-  if (!fault_address) {  // Invalid address, shall exit now.
-    err("Invalid address=%p\n", fault_address);
-    signal(SIGSEGV, SIG_DFL);
-    err("now assert 0\n");
-    assert(0);
-  }
 
   // Find the parent vaddr_range this address belongs to.
   // If this fault-address doesn't belong to any vaddr_range, this fault
-  // is caused by address outside of our control. Should fall back
-  // to call default handler:  signal(SIGSEGV, SIG_DFL).
+  // is caused by accessing address exceeding hybrid-memory.
+  // We should relay this signal to default handler.
   VAddressRange* vaddr_range =
       vaddr_range_group.FindVAddressRange(fault_page);
   if (vaddr_range == NULL) {
     err("address=%p not within hybrid-memory range.\n", fault_address);
+    // Restore default handler for sigsegv.
     signal(SIGSEGV, SIG_DFL);
+    // Issue a signal.
+    kill(getpid(), SIGSEGV);
     return;
   }
   HybridMemory* hmem =
       hmem_group.GetHybridMemory(fault_address - vaddr_range->GetAddress());
+  if (number_page_faults % 200000 == 0) {
+    dbg("fault-addr %p, maps to hmem %d\n",
+        fault_address,
+        hmem->GetInstanceId());
+  }
   hmem->Lock();
 
-  uint64_t  prot_size = 4096;
+  uint64_t  prot_size = PAGE_SIZE;
   if (rwerror == 0) {  // A read fault.
-    // TODO: find the target data from caching layer, copy target data into
-    // this page (which requires set this page to PROT_WRITE),
-    // then set it to PROT_READ.
+    if (mprotect(fault_page, prot_size, PROT_WRITE) != 0) {
+      err("in sigsegv: read mprotect %p failed...\n", fault_page);
+      perror("mprotect error::  ");
+      assert(0);
+    }
+    // TODO: find the target data from caching layer, copy target
+    // data into this page.
+    *fault_address = 0xff;
     if (mprotect(fault_page, prot_size, PROT_READ) != 0) {
       err("in sigsegv: read mprotect %p failed...\n", fault_page);
       perror("mprotect error::  ");
       assert(0);
     }
   } else {  // A write fault.
-    // TODO: set this page to PROT_WRITE,
-    // find the target data from caching layer, copy target data into
-    // this page.
     if (mprotect(fault_page, prot_size, PROT_WRITE) != 0) {
-      err("in sigsegv: write mprotect %p failed...\n", fault_address);
+      // TODO: find the target data from caching layer, copy target data into
+      // this page.
+      err("in sigsegv: write mprotect %p failed, page-faults=%ld\n",
+          fault_address,
+          number_page_faults);
       perror("mprotect error::  ");
       assert(0);
     }
   }
 
-  // The "fault_page" has been materialized by OS.
-  // Add this page to the list of materialized pages.
-  // If this list exceeds limits, should madvise(DONTNEED) to release
-  // some pages.
+  // The "fault_page" has been materialized by OS.  We should add this page
+  // to the list of materialized pages.
+  // If this list exceeds limits, it will overflow to the next cache layer.
   hmem->AddPageToPageBuffer(
       fault_page, prot_size, vaddr_range->vaddr_range_id_);
   hmem->Unlock();

@@ -1,0 +1,57 @@
+=============================================================
+=====		basic sigsegv fault overhead.
+
+hmem has 16 instances, total page-cache = 512MB
+
+One vaddr-range = 40 GB,  1/2/4 threads perform random access 
+
+
+
+Init: Has created a Vaddr_range:  address = 0x7f21430c0000, size = 40960000000
+AllocateVAddressRange: Have inserted a new range to BST. Now have 1 ranges
+AccessHybridMemory: thread 1124853504: use rand-seed 8678742, num-pages 10000000
+
+SigSegvAction: fault-addr 0x7f21c8a82010, maps to hmem 12
+SigSegvAction: fault-addr 0x7f21eb5ce010, maps to hmem 0
+AccessHybridMemory: Thread 1124853504: max-lantency = 83.631000 usec
+1 threads, 500000 access, 447582 page faults in 4351967 usec, 9.723284 usec/page
+throughput = 114890 access / sec
+
+
+AccessHybridMemory: thread 1124853504: use rand-seed 767718, num-pages 10000000
+AccessHybridMemory: thread 1116460800: use rand-seed 2825008, num-pages 10000000
+SigSegvAction: fault-addr 0x7f219fc91010, maps to hmem 13
+SigSegvAction: fault-addr 0x7f215da86010, maps to hmem 12
+SigSegvAction: Got SIGSEGV at address 0x7f223fca3010, page 0x7f223fca3000, pc 0x4017f9, rw=0
+SigSegvAction: fault-addr 0x7f219ae9b010, maps to hmem 13
+AccessHybridMemory: Thread 1124853504: max-lantency = 4972.660000 usec
+AccessHybridMemory: Thread 1116460800: max-lantency = 4973.177000 usec
+2 threads, 1000000 access, 877905 page faults in 23452105 usec, 26.713716 usec/page
+throughput = 42640 access / sec
+
+
+AccessHybridMemory: thread 1116460800: use rand-seed 5028114, num-pages 10000000
+AccessHybridMemory: thread 1124853504: use rand-seed 3427332, num-pages 10000000
+AccessHybridMemory: thread 1108068096: use rand-seed 7086456, num-pages 10000000
+AccessHybridMemory: thread 1099675392: use rand-seed 8727417, num-pages 10000000
+SigSegvAction: fault-addr 0x7f2187aa1010, maps to hmem 14
+SigSegvAction: fault-addr 0x7f21f12c7010, maps to hmem 0
+SigSegvAction: fault-addr 0x7f2154fb3010, maps to hmem 15
+SigSegvAction: Got SIGSEGV at address 0x7f21abb85010, page 0x7f21abb85000, pc 0x4017f9, rw=0
+SigSegvAction: fault-addr 0x7f21abb85010, maps to hmem 12
+SigSegvAction: fault-addr 0x7f2197254010, maps to hmem 9
+SigSegvAction: fault-addr 0x7f21b997b010, maps to hmem 11
+SigSegvAction: fault-addr 0x7f216f259010, maps to hmem 9
+SigSegvAction: fault-addr 0x7f21af9d4010, maps to hmem 1
+SigSegvAction: Got SIGSEGV at address 0x7f2167df1010, page 0x7f2167df1000, pc 0x4017f9, rw=0
+AccessHybridMemory: Thread 1108068096: max-lantency = 13796.883000 usec
+AccessHybridMemory: Thread 1124853504: max-lantency = 13546.853000 usec
+AccessHybridMemory: Thread 1099675392: max-lantency = 13566.578000 usec
+AccessHybridMemory: Thread 1116460800: max-lantency = 13832.511000 usec
+4 threads, 2000000 access, 1755385 page faults in 62124489 usec, 35.390805 usec/page
+throughput = 32193 access / sec
+
+
+ReleaseVAddressRange: Have deleted a vrange. Now have 0 ranges
+UninstallHandler: Uninstall sigsegv handler...
+

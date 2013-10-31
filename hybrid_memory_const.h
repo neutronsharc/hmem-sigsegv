@@ -2,7 +2,8 @@
 #define HYBRID_MEMORY_CONST_H_
 
 #define PAGE_BITS (12)
-#define PAGE_SIZE (4096ULL)
+#define PAGE_SIZE (1ULL << PAGE_BITS)
+#define PAGE_MASK (~(PAGE_SIZE - 1))
 
 // 2^4 = 16 consecutive pages are treated in one chunk,
 // and one chunk is basic unit of round-robin to spread
