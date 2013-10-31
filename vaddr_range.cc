@@ -31,10 +31,11 @@ bool VAddressRange::Init(uint64_t size) {
   assert(mprotect(address_, size_, PROT_NONE) == 0);
 
   number_pages_ = size_ >> PAGE_BITS;
-  v2h_map_size_ = number_pages_ * sizeof(V2HMapMetadata);
-  assert(posix_memalign((void**)&v2h_map_, alignment, v2h_map_size_) == 0);
-  memset(v2h_map_, 0, v2h_map_size_);
-  assert(mlock(v2h_map_, v2h_map_size_) == 0);
+  v2h_map_size_ = number_pages_;
+  uint64_t map_byte_size = v2h_map_size_ * sizeof(V2HMapMetadata);
+  assert(posix_memalign((void**)&v2h_map_, alignment, map_byte_size) == 0);
+  memset(v2h_map_, 0, map_byte_size);
+  assert(mlock(v2h_map_, map_byte_size) == 0);
 
   avl_node_.address = (uint64_t)address_;
   avl_node_.len = size_;
@@ -57,7 +58,8 @@ void VAddressRange::Release() {
     free(address_);
     address_ = NULL;
     is_active_ = false;
-    munlock(v2h_map_, v2h_map_size_ * sizeof(V2HMapMetadata));
+    uint64_t map_byte_size = v2h_map_size_ * sizeof(V2HMapMetadata);
+    munlock(v2h_map_, map_byte_size);
     free(v2h_map_);
     v2h_map_ = NULL;
   }
