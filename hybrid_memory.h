@@ -10,9 +10,9 @@
 #include <vector>
 
 #include "hybrid_memory_const.h"
-#include "page_buffer.h"
+#include "page_cache.h"
 
-class PageBuffer;
+class PageCache;
 
 // An instance of hybrid-memory.
 class HybridMemory {
@@ -33,11 +33,9 @@ class HybridMemory {
 
   void Unlock();
 
-  bool AddPageToPageBuffer(uint8_t* page,
-                           uint32_t size,
-                           uint32_t vaddr_range_id);
-
   uint32_t GetInstanceId() const { return hmem_instance_id_; }
+
+  PageCache* GetPageCache() { return &page_cache_; }
 
  protected:
   pthread_mutex_t lock_;
@@ -50,7 +48,7 @@ class HybridMemory {
   uint64_t ram_buffer_size_;
   uint64_t ssd_buffer_size_;
 
-  PageBuffer page_buffer_;
+  PageCache page_cache_;
 };
 
 // One process can create only one HybridMemoryGroup, because all threads in

@@ -5,6 +5,9 @@
 #define PAGE_SIZE (1ULL << PAGE_BITS)
 #define PAGE_MASK (~(PAGE_SIZE - 1))
 
+#define SSD_PAGE_OFFSET_BITS (24)
+#define HMEM_ID_BITS (8)
+
 // 2^4 = 16 consecutive pages are treated in one chunk,
 // and one chunk is basic unit of round-robin to spread
 // virtual-address to hmem-instances.

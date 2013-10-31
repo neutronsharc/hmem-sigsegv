@@ -28,7 +28,7 @@ bool HybridMemory::Init(const std::string &ssd_filename,
   pthread_mutex_init(&lock_, NULL);
   // TODO: allocate buffers.
 
-  page_buffer_.Init((page_buffer_size >> PAGE_BITS) + 1);
+  page_cache_.Init((page_buffer_size >> PAGE_BITS) + 1);
   return true;
 }
 
@@ -43,12 +43,6 @@ void HybridMemory::Lock() {
 
 void HybridMemory::Unlock() {
   pthread_mutex_unlock(&lock_);
-}
-
-bool HybridMemory::AddPageToPageBuffer(uint8_t* page,
-                                       uint32_t size,
-                                       uint32_t vaddr_range_id) {
-  return page_buffer_.AddPage(page, size, vaddr_range_id);
 }
 
 HybridMemoryGroup::~HybridMemoryGroup() {
@@ -176,10 +170,9 @@ static void SigSegvAction(int sig, siginfo_t* sig_info, void* ucontext) {
         rwerror);
   }
 
-
   // Find the parent vaddr_range this address belongs to.
   // If this fault-address doesn't belong to any vaddr_range, this fault
-  // is caused by accessing address exceeding hybrid-memory.
+  // is caused by accessing address outside of hybrid-memory.
   // We should relay this signal to default handler.
   VAddressRange* vaddr_range =
       vaddr_range_group.FindVAddressRange(fault_page);
@@ -199,9 +192,39 @@ static void SigSegvAction(int sig, siginfo_t* sig_info, void* ucontext) {
         hmem->GetInstanceId());
   }
   hmem->Lock();
-
+  // TODO:
+  // 1. using page-offset (fault_page - vaddr_range_start) >> 12 to get
+  //    index to virt-to-hybrid table to get metadata;
+  V2HMapMetadata* v2hmap =
+      vaddr_range->GetV2HMapMetadata(fault_address - vaddr_range->GetAddress());
+  // 2. If v2h metadata shows the virt-address is in page-cache,
+  //    this means another thread has just faulted on this page and populated
+  //    this page. Nothing to do. return.
+  if (v2hmap->exist_page_cache) {
+    dbg("virt-address %p already in page cache\n", fault_address);
+    hmem->Unlock();
+    return;
+  }
+  // 3. If v2h metadata shows the virt-addr is in ram-cache, search
+  //    ram cache, copy to virt-addr; mark exist in page-cache; return;
+  //    has a copy in ram-buffer,
+  // 4. If v2h shows the virt-addr is in flash-cache,  v2h also records
+  //    in-flash offset,  load from flash and copy to virt-addr; mark exist
+  //    in page-cache; return;
+  // 5. Else,  if v2h shows it exists in hdd-file, the offset in vaddr-range
+  //    is also file-offset. Load from file, mark exist in page-cache;
+  //    return;
   uint64_t  prot_size = PAGE_SIZE;
   if (rwerror == 0) {  // A read fault.
+    // NOTE: there is a vulnerability window here when we do the serial ops:
+    //   Read-fault: (write-protect, populate the page, read-protect it), or,
+    //   Writ-fault: (write-protect, populate the page).
+    // After "write-protect" but before "populate the page", it's possible that
+    // another thread access this same page without triggering page fault,
+    // hence getting incorrect value.
+    // There is nothing we can do to guard against this race.
+    // It's the user's responsibility to enforce a higher level lock
+    // to prevent race-access in a page.
     if (mprotect(fault_page, prot_size, PROT_WRITE) != 0) {
       err("in sigsegv: read mprotect %p failed...\n", fault_page);
       perror("mprotect error::  ");
@@ -226,12 +249,11 @@ static void SigSegvAction(int sig, siginfo_t* sig_info, void* ucontext) {
       assert(0);
     }
   }
-
   // The "fault_page" has been materialized by OS.  We should add this page
   // to the list of materialized pages.
   // If this list exceeds limits, it will overflow to the next cache layer.
-  hmem->AddPageToPageBuffer(
-      fault_page, prot_size, vaddr_range->vaddr_range_id_);
+  hmem->GetPageCache()->AddPage(
+      fault_page, prot_size, vaddr_range->vaddr_range_id_, v2hmap);
   hmem->Unlock();
   return;
 }

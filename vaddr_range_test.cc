@@ -1,8 +1,26 @@
 #include <assert.h>
 #include <stdio.h>
+#include <string.h>
 
 #include "vaddr_range.h"
 #include "avl.h"
+
+static void Test2() {
+  V2HMapMetadata v2hmap;  // sizeof() = 5B
+  printf("sizeof v2hmap = %ld\n", sizeof(v2hmap));
+
+  memset(&v2hmap, 0, sizeof(v2hmap));
+  assert(v2hmap.hmem_id == 0);
+  assert(v2hmap.ssd_page_offset == 0);
+
+  v2hmap.hmem_id = 32;
+  v2hmap.ssd_page_offset = 165;
+
+  assert(v2hmap.hmem_id == 32);
+  assert(v2hmap.ssd_page_offset == 165);
+
+  printf("Test succeeded.\n");
+}
 
 static void TestVaddrRange() {
   VAddressRangeGroup vaddr_group;
@@ -51,6 +69,7 @@ static void TestVaddrRange() {
 }
 
 int main(int argc, char **argv) {
-  TestVaddrRange();
+  Test2();
+  //TestVaddrRange();
   return 0;
 }

@@ -30,17 +30,21 @@ static void* AccessHybridMemory(void *arg) {
       rand_seed,
       number_of_pages);
 
-  uint64_t latency_ns = 0;
-  uint64_t max_latency_ns = 0;
+  int64_t latency_ns = 0;
+  int64_t max_latency_ns = 0;
   pthread_mutex_lock(&task->lock);
   for (uint64_t i = 0; i < task->number_access; ++i) {
     uint32_t page_number = rand_r(&rand_seed) % number_of_pages;
     //uint32_t page_number = i % number_of_pages;
     uint8_t* p = (uint8_t*)(task->buffer + (page_number << PAGE_BITS) + 16);
-    //p = i;
     clock_gettime(CLOCK_REALTIME, &tstart);
-    if (*p != 0xff) {
-      err("vaddr %p: data = %x\n", p, *p);
+    // 50% read, 50% write.
+    if (page_number % 2 == 0) {  // write-access
+      *p = 0xff;
+    } else {
+      if (*p != 0xff) {   // read-access
+        err("vaddr %p: data = %x\n", p, *p);
+      }
     }
     clock_gettime(CLOCK_REALTIME, &tend);
     latency_ns = (tend.tv_sec - tstart.tv_sec) * 1000000000 +
@@ -50,7 +54,7 @@ static void* AccessHybridMemory(void *arg) {
     }
   }
   pthread_mutex_unlock(&task->lock);
-  dbg("Thread %u: max-lantency = %f usec\n",
+  dbg("Thread %u: max-latency = %f usec\n",
       (uint32_t)task->thread_id,
       max_latency_ns / 1000.0);
   pthread_exit(NULL);

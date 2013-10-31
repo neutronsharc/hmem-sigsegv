@@ -1,12 +1,19 @@
 #include <assert.h>
 #include <stdio.h>
+#include <string.h>
 #include <sys/mman.h>
 
 #include "debug.h"
 #include "vaddr_range.h"
+#include "utils.h"
 
 VAddressRange::VAddressRange()
-    : is_active_(false), address_(NULL), size_(0) {}
+    : is_active_(false),
+      address_(NULL),
+      size_(0),
+      number_pages_(0),
+      v2h_map_(NULL),
+      v2h_map_size_(0) {}
 
 VAddressRange::~VAddressRange() {
   Release();
@@ -15,13 +22,24 @@ VAddressRange::~VAddressRange() {
 bool VAddressRange::Init(uint64_t size) {
   assert(is_active_ == false);
   uint64_t alignment = PAGE_SIZE;
-  size_ = size;
+  size_ = RoundUpToPageSize(size);
+  if (size_ < PAGE_SIZE) {
+    err("Create vaddr_range size too small: %ld.\n", size);
+    return false;
+  }
   assert(posix_memalign((void**)&address_, alignment, size_) == 0);
   assert(mprotect(address_, size_, PROT_NONE) == 0);
+
+  number_pages_ = size_ >> PAGE_BITS;
+  v2h_map_size_ = number_pages_ * sizeof(V2HMapMetadata);
+  assert(posix_memalign((void**)&v2h_map_, alignment, v2h_map_size_) == 0);
+  memset(v2h_map_, 0, v2h_map_size_);
+  assert(mlock(v2h_map_, v2h_map_size_) == 0);
 
   avl_node_.address = (uint64_t)address_;
   avl_node_.len = size_;
   avl_node_.embedding_object = this;
+
   is_active_ = true;
   dbg("Has created a Vaddr_range:  address = %p, size = %ld\n",
       address_,
@@ -29,11 +47,19 @@ bool VAddressRange::Init(uint64_t size) {
   return true;
 }
 
+V2HMapMetadata* VAddressRange::GetV2HMapMetadata(uint64_t address_offset) {
+  assert(address_offset < size_);
+  return &v2h_map_[address_offset >> PAGE_BITS];
+}
+
 void VAddressRange::Release() {
   if (is_active_) {
     free(address_);
     address_ = NULL;
     is_active_ = false;
+    munlock(v2h_map_, v2h_map_size_ * sizeof(V2HMapMetadata));
+    free(v2h_map_);
+    v2h_map_ = NULL;
   }
 }
 
