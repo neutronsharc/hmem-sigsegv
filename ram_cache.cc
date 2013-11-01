@@ -51,8 +51,8 @@ bool RAMCache::Release() {
   }
 }
 
-RAMCacheItem* RAMCache::GetItem(void *virtual_address) {
-  assert((uint64_t)virtual_address & (PAGE_SIZE - 1) == 0);
+RAMCacheItem* RAMCache::GetItem(void* virtual_address) {
+  assert(((uint64_t)virtual_address & (PAGE_SIZE - 1)) == 0);
   RAMCacheItem* item =
       hash_table_.Lookup((void*)virtual_address, sizeof(void*));
   if (item) {
@@ -64,7 +64,7 @@ RAMCacheItem* RAMCache::GetItem(void *virtual_address) {
 bool RAMCache::AddPage(void* page,
                        uint64_t obj_size,
                        V2HMapMetadata* v2hmap) {
-  assert((uint64_t)page & (PAGE_SIZE - 1) == 0);
+  assert(((uint64_t)page & (PAGE_SIZE - 1)) == 0);
   assert(obj_size <= PAGE_SIZE);
 
   RAMCacheItem* item = hash_table_.Lookup(page, sizeof(void*));

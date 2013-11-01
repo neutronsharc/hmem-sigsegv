@@ -161,8 +161,8 @@ static void SigSegvAction(int sig, siginfo_t* sig_info, void* ucontext) {
   //    this means another thread has faulted on this page before and populated
   //    this page. Nothing to do. return.
   if (v2hmap->exist_page_cache) {
-    err("Potential race-condition:: virt-address %p already in page cache\n",
-        fault_address);
+    //err("Potential race-condition:: virt-address %p already in page cache\n",
+    //    fault_address);
     hmem->Unlock();
     return;
   }
@@ -187,7 +187,7 @@ static void SigSegvAction(int sig, siginfo_t* sig_info, void* ucontext) {
     //err("The fault-page %p not exist in any layer...\n", fault_page);
     // This is a first-access to a virt-page that doesn't exist in file.
     // Fall through.
-    memset(fault_page, 0xA5, PROT_WRITE);
+    //memset(fault_page, 0xA5, PROT_WRITE);
   }
   if (rwerror == 0) {
     // a read fault. Set the page to READ_ONLY.

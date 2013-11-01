@@ -116,9 +116,9 @@ static void* AccessHybridMemory(void *arg) {
 static void TestMultithreadAccess() {
   // Prepare hybrid-mem.
   uint64_t one_mega = 1024ULL * 1024;
-  uint32_t num_hmem_instances = 16;
-  uint64_t page_buffer_size = one_mega;
-  uint64_t ram_buffer_size = one_mega * 100;
+  uint32_t num_hmem_instances = 8;
+  uint64_t page_buffer_size = one_mega * 16;
+  uint64_t ram_buffer_size = one_mega * 1000;
   uint64_t ssd_buffer_size = one_mega* 100000;
   assert(InitHybridMemory("ssd",
                           "hmem",
@@ -128,7 +128,7 @@ static void TestMultithreadAccess() {
                           num_hmem_instances) == true);
 
   // Allocate a big virt-memory, shared by all threads.
-  uint64_t number_pages = 1000ULL * 20;
+  uint64_t number_pages = 1000ULL * 1000 * 10;
   uint64_t buffer_size = number_pages * 4096;
   uint8_t* buffer = (uint8_t*)hmem_alloc(buffer_size);
   assert(buffer != NULL);
@@ -136,7 +136,8 @@ static void TestMultithreadAccess() {
   // Start parallel threads to access the virt-memory.
   uint32_t max_threads = 1;
   TaskItem tasks[max_threads];
-  uint64_t number_access = 1000ULL * 100;
+  uint64_t number_access = 1000UL * 200;
+      //ram_buffer_size / 4096 - 1; //1000ULL * 100;
 
   for (uint32_t number_threads = 1; number_threads <= max_threads; number_threads *= 2) {
     for (uint32_t i = 0; i < number_threads; ++i) {
