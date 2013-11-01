@@ -46,3 +46,71 @@ inserts = 2000000, lookups = 4000000, removes = 0, hit = 2000000, miss = 2000000
 
 
 
+
+===============================================================
+*****		hmem:  sigsegv + page-cache + ram-cache
+
+Now have the basic sigsegv, pagecache(L1) and ram-cache(L2) work.
+But L2 cache cannot overflow, so accessed-space should not exceed L2 size.
+
+L1 cache = 10M (2560 pages can be materialized)
+L2 cache = 1000 M (can cache 256,000 pages)
+
+virt-space = 10 M pages (40 GB),  access the first 250,000 pages so as not to exceed L2 size.
+
+first write the first 250k pages, then, read them back.
+Measure read/write lat (usec), and ops/sec.
+work threads access different sections of pages.
+
+
+1 hmem-instance, 1 worker thread
+                 seq                                          random                   random(L1 has only 10 pages)
+max-write-lat  103/66/65/133/63                       151/73/67/84/72/
+max-read-lat   124/56/52/120/42                       130/61/58/59/61/
+avg op lat    6.95/6.92/6.95/ 6.94/6.95               9.27/9.31/9.21/9.29/9.21
+total ops/sec   143696/144372/143778/144025/143733    108948/108437/109689/108667/109709
+
+		********* effect of L1 cache size for random access.
+
+Random workloads access random pages spreaded widely, and unprotect the target page before access.
+Each uprotect causes a process's vm-area-struct to split, which increases the process's vm-map tree depth.
+Each page fault has to traverse the vm-map tree to find the vm-region.
+Larger L1 cache means more materialized pages are alive, and more vm-areas in vm-map tree,
+so higher overhead at every page fault to search the vm-map tree.
+
+for sequential workload, bigger L1 cache doesn't affect vm-map tree search efficiency because
+the contiguous pages are in a same vm-area.  Bigger L1 cache however helps access with strong spatial locality.
+
+                                       1-hem-1-worker-random-access
+                      L1 has 2 pages            L1 has 10 pages               L1 has 100 pages
+max-write-lat      107/60/108/               103/80/77/81/                    89/136/139/
+max-read-lat      106/23/108/                103/42/46/58/                    52/103/125/
+avg-op-lat        7.78/7.76/7.79/            7.50/7.46/7.52/7.52/             8.02/7.98/7.99/
+total ops/sec     128424/128744/128272       133243/133927/132857/132826      124631/125260/125163
+
+		************************
+
+
+1 hmem-instance, 2 worker thread
+                 seq                                          random
+max-wirte-lat   9316/9240/ 240/241/857/791/                  1004/764/299/197/368/426/
+max-read-lat    19913/30013/9990/10263/44375/49998/          1921/1334/1474/526/2642/2803/
+avg op lat       11.5/12.4/11.88/                            18.72/17.74/17.15/
+total ops/sec   86789/ 80413 / 84127                         53953/56924 / 58874
+
+
+8 hmem-instance, 1 worker thread
+                 seq                                          random
+max-write-lat   108/66/138/65                            105/98/96/
+max-read-lat    89/61/106/51/                            134/61/64/
+avg op lat      7.06/7.06/7.10/7.13/                     9.24/9.30/9.32/
+total ops/sec   141544/141528/140861/140207              109295/108518/108347/
+
+
+8 hmem-instance, 2 worker thread
+                 seq                                          random
+max-wirte-lat    1547/1545/181/258/250/322/2058/2073/3294/3773/      403/369//634/600/4000/3822/1148/1363/
+max-read-lat     2716/2708/690/864/993/1067/358/497/10028/866/       989/983/871/1144/645/641/348/406/
+avg op lat       15.9/12.8 /12.60/15.99/13.774/                 19.557/20.6/19.68/17.0
+total ops/sec    62872/78134/79401/62514 / 72612                 51643/48883/51335/59281
+
