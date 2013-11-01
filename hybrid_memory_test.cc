@@ -45,7 +45,7 @@ static void* AccessHybridMemoryWriteThenRead(void *arg) {
 
   //////////////////////////////////////////
   pthread_mutex_lock(&task->lock);
-  faults_step1 = GetNumberOfPageFaults();
+  faults_step1 = NumberOfPageFaults();
   // Write round.
   for (uint64_t i = 0; i < task->number_access; ++i) {
     if (task->sequential) {
@@ -63,7 +63,8 @@ static void* AccessHybridMemoryWriteThenRead(void *arg) {
       max_write_latency_ns = latency_ns;
     }
   }
-  faults_step2 = GetNumberOfPageFaults();
+  faults_step2 = NumberOfPageFaults();
+  dbg("hmem found-pages=%ld, unfound-pages=%ld\n", FoundPages(), UnFoundPages());
   // Read round.
   for (uint64_t i = 0; i < task->number_access; ++i) {
     if (task->sequential) {
@@ -75,7 +76,7 @@ static void* AccessHybridMemoryWriteThenRead(void *arg) {
     clock_gettime(CLOCK_REALTIME, &tstart);
     if (*p != i) {
       if (task->sequential) {
-        err("vaddr %p: should be 0x%lx, data = %lx\n", p, i, *p);
+        //err("vaddr %p: should be 0x%lx, data = %lx\n", p, i, *p);
       } else {
       }
     }
@@ -86,8 +87,9 @@ static void* AccessHybridMemoryWriteThenRead(void *arg) {
       max_read_latency_ns = latency_ns;
     }
   }
-  faults_step3 = GetNumberOfPageFaults();
+  faults_step3 = NumberOfPageFaults();
   pthread_mutex_unlock(&task->lock);
+  dbg("hmem found-pages=%ld, unfound-pages=%ld\n", FoundPages(), UnFoundPages());
   //////////////////////////////////////////
 
   // Report stats.
@@ -147,8 +149,8 @@ static void TestMultithreadAccess() {
   // Prepare hybrid-mem.
   uint64_t one_mega = 1024ULL * 1024;
   uint32_t num_hmem_instances = 1;
-  uint64_t page_buffer_size = 4096 * 10; //one_mega * 10; //4096 * 16; //one_mega * 16;
-  uint64_t ram_buffer_size = one_mega * 1000;
+  uint64_t page_buffer_size = one_mega; //one_mega * 10; //4096 * 16; //one_mega * 16;
+  uint64_t ram_buffer_size = one_mega * 10;
   uint64_t ssd_buffer_size = one_mega* 100000;
   assert(InitHybridMemory("ssd",
                           "hmem",
@@ -167,18 +169,19 @@ static void TestMultithreadAccess() {
   uint32_t max_threads = 1;
   TaskItem tasks[max_threads];
   //uint64_t number_access = ram_buffer_size / 4096;
-  uint64_t number_access = 1000UL * 250;
+  uint64_t number_access = 1000UL * 10;
 
   uint64_t real_memory_pages = ram_buffer_size / 4096;
+  uint64_t total_pages = number_access;
 
   for (uint32_t number_threads = max_threads; number_threads <= max_threads; number_threads *= 2) {
-    uint64_t per_task_pages = real_memory_pages / number_threads;
+    uint64_t per_task_pages = total_pages / number_threads;
     uint64_t per_task_access = number_access / number_threads;
     uint64_t begin_page = 0;
     for (uint32_t i = 0; i < number_threads; ++i) {
       tasks[i].buffer = buffer;
       tasks[i].size = buffer_size;
-      tasks[i].sequential = true;
+      tasks[i].sequential = false;
       tasks[i].id = i;
       tasks[i].total_tasks = number_threads;
 
@@ -196,7 +199,7 @@ static void TestMultithreadAccess() {
     }
     sleep(1);
     struct timeval tstart, tend;
-    uint64_t p1_faults = GetNumberOfPageFaults();
+    uint64_t p1_faults = NumberOfPageFaults();
     gettimeofday(&tstart, NULL);
     // Tell all theads to start.
     for (uint32_t i = 0; i < number_threads; ++i) {
@@ -206,7 +209,7 @@ static void TestMultithreadAccess() {
       pthread_join(tasks[i].thread_id, NULL);
     }
     gettimeofday(&tend, NULL);
-    uint64_t p2_faults = GetNumberOfPageFaults();
+    uint64_t p2_faults = NumberOfPageFaults();
     uint64_t number_faults = p2_faults - p1_faults;
     uint64_t total_usec = (tend.tv_sec - tstart.tv_sec) * 1000000 +
                           (tend.tv_usec - tstart.tv_usec);
@@ -214,7 +217,7 @@ static void TestMultithreadAccess() {
     uint64_t total_accesses = number_access * 2;
     printf(
         "%d threads, %ld access, %ld page faults in %ld usec, %f usec/page\n"
-        "throughput = %ld access / sec\n\n\n",
+        "throughput = %ld access / sec\n\n",
         number_threads,
         total_accesses,
         number_faults,
@@ -258,7 +261,7 @@ static void TestHybridMemory() {
   gettimeofday(&tend, NULL);
   uint64_t total_usec = (tend.tv_sec - tstart.tv_sec) * 1000000 +
       (tend.tv_usec - tstart.tv_usec);
-  uint64_t p1_faults = GetNumberOfPageFaults();
+  uint64_t p1_faults = NumberOfPageFaults();
   printf("%ld page faults in %ld usec, %f usec/page\n",
          p1_faults,
          total_usec,
@@ -277,7 +280,7 @@ static void TestHybridMemory() {
   gettimeofday(&tend, NULL);
   total_usec = (tend.tv_sec - tstart.tv_sec) * 1000000 +
       (tend.tv_usec - tstart.tv_usec);
-  uint64_t p2_faults = GetNumberOfPageFaults() - p1_faults;
+  uint64_t p2_faults = NumberOfPageFaults() - p1_faults;
   printf("%ld page faults in %ld usec, %f usec/page\n",
          p2_faults,
          total_usec,

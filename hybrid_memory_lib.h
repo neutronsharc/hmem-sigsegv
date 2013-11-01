@@ -17,6 +17,10 @@ void *hmem_alloc(uint64_t size);
 
 void hmem_free(void *address);
 
-uint64_t GetNumberOfPageFaults();
+uint64_t NumberOfPageFaults();
+
+uint64_t FoundPages();
+
+uint64_t UnFoundPages();
 
 #endif  // HYBRID_MEMORY_LIB_H_

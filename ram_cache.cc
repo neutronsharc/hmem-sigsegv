@@ -61,6 +61,38 @@ RAMCacheItem* RAMCache::GetItem(void* virtual_address) {
   return item;
 }
 
+uint32_t RAMCache::EvictItems() {
+  uint32_t items_to_evict = 16;
+  RAMCacheItem* items[items_to_evict];
+  // Scan backwards from Least-Recent-Used objs.
+  RAMCacheItem* item = lru_list_.tail();
+  uint32_t items_found = 0;
+  while (item && (items_found < items_to_evict)) {
+    V2HMapMetadata* v2hmap = item->v2hmap;
+    assert(v2hmap->exist_ram_cache);
+
+    if (v2hmap->exist_page_cache == 0) {
+      items[items_found++] = item;
+    }
+    item = item->lru_prev;
+  }
+  for (uint32_t i = 0; i < items_found; ++i) {
+    item = items[i];
+    // TODO: move these objs to the next lower cache layer.
+    // hybrid_memory_->GetFlashCache()->AddPage(item);
+
+    lru_list_.Unlink(item);
+    hash_table_.Remove(item->hash_key, sizeof(void*));
+
+    item->v2hmap->exist_ram_cache = 0;
+    item->v2hmap->dirty_ram_cache = 0;
+    item->v2hmap = 0;
+    item->hash_key = NULL;
+    free_list_.Free(item);
+  }
+  return items_found;
+}
+
 bool RAMCache::AddPage(void* page,
                        uint64_t obj_size,
                        V2HMapMetadata* v2hmap) {
@@ -83,8 +115,12 @@ bool RAMCache::AddPage(void* page,
     // The virt-page hasn't been cahched in this layer.
     item = free_list_.New();
     while (!item) {
-      // TODO: traverse LRU-list to evict some old items to the next layer.
-      err("RAMCache full! Need to evict some objs.\n");
+      // Traverse LRU-list to evict some old items to the next layer.
+      if (EvictItems() == 0) {
+        err("Unable to evict objs from RAM-Cache!\n");
+        return false;
+      }
+      item = free_list_.New();
     }
     assert(item != NULL);
     memcpy(item->data, page, obj_size);

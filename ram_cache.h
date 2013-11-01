@@ -76,6 +76,10 @@ class RAMCache {
                V2HMapMetadata* v2hmap,
                bool is_dirty);
 
+  // Evict objects and demote them to the next lower caching layer.
+  // Return the number of objs that have been evicted.
+  uint32_t EvictItems();
+
  protected:
   // if this cache layer is ready.
   bool ready_;

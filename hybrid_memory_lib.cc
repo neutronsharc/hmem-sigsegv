@@ -22,9 +22,17 @@ static void SigSegvAction(int sig, siginfo_t* sig_info, void* ucontext);
 
 static uint64_t number_page_faults;
 
-uint64_t GetNumberOfPageFaults() {
-  return number_page_faults;
-}
+// How many pages were not found in hybrid-memory.
+static uint64_t unfound_pages;
+
+// How many pages were found in hybrid-memory.
+static uint64_t found_pages;
+
+uint64_t NumberOfPageFaults() { return number_page_faults; }
+
+uint64_t FoundPages() { return found_pages; }
+
+uint64_t UnFoundPages() { return unfound_pages; }
 
 bool InitHybridMemory(const std::string& ssd_dirpath,
                       const std::string& hmem_group_name,
@@ -187,7 +195,10 @@ static void SigSegvAction(int sig, siginfo_t* sig_info, void* ucontext) {
     //err("The fault-page %p not exist in any layer...\n", fault_page);
     // This is a first-access to a virt-page that doesn't exist in file.
     // Fall through.
-    //memset(fault_page, 0xA5, PROT_WRITE);
+    ++unfound_pages;
+    memset(fault_page, 0xA5, PROT_WRITE);
+  } else {
+    ++found_pages;
   }
   if (rwerror == 0) {
     // a read fault. Set the page to READ_ONLY.
