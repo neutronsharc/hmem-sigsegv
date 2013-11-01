@@ -35,3 +35,14 @@ op/sec           116103/117076/118225    47910/46097/46913                37288/
 
 
 
+========================================================
+======== 		hash-table at ram-cache layer
+
+==================
+Hashtable: "test table", 1000000 buckets, 2000000 objs, 
+inserts = 2000000, lookups = 4000000, removes = 0, hit = 2000000, miss = 2000000, deepest-collision = 11, collisions = 3998594
+
+2000000 lookup, cost 428879745 ns, 214.439873 ns/lookup
+
+
+

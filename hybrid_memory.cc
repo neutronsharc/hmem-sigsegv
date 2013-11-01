@@ -28,7 +28,10 @@ bool HybridMemory::Init(const std::string &ssd_filename,
   pthread_mutex_init(&lock_, NULL);
   // TODO: allocate buffers.
 
-  page_cache_.Init((page_buffer_size >> PAGE_BITS) + 1);
+  char name[64];
+  sprintf(name, "hmem-%d", hmem_intance_id);
+  assert(page_cache_.Init(name, (page_buffer_size >> PAGE_BITS) + 1) ==
+         true);
   return true;
 }
 

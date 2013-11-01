@@ -1,5 +1,10 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <sys/mman.h>
+#include <sys/time.h>
+#include <time.h>
+#include <pthread.h>
+
 #include "hash_table.h"
 
 struct TestObject {
@@ -13,29 +18,37 @@ struct TestObject {
 static void TestHashTable() {
   HashTable<TestObject> hash_table;
   bool pin_in_memory = true;
-  uint32_t buckets = 16;
+  uint32_t buckets = 1000000;
   assert(hash_table.Init("test table", buckets, pin_in_memory) == true);
   assert(hash_table.GetNumberObjects() == 0);
   assert(hash_table.GetNumberBuckets() == buckets);
   hash_table.ShowStats();
 
-  uint32_t number_objs = 32;
+  uint32_t number_objs = buckets * 2;
   TestObject *objs = new TestObject[number_objs];
 
   for (uint32_t i = 0; i < number_objs; ++i) {
     objs[i].hash_key = malloc(512);
     objs[i].key_size = sizeof(void*);
-    printf("obj %d: key = %p\n", i, objs[i].hash_key);
   }
 
   for (uint32_t i = 0; i < number_objs; ++i) {
     assert(hash_table.Insert(objs + i) == true);
   }
   assert(hash_table.GetNumberObjects() == number_objs);
+  struct timespec tstart, tend;
+  clock_gettime(CLOCK_REALTIME, &tstart);
   for (uint32_t i = 0; i < number_objs; ++i) {
     assert(hash_table.Lookup(objs[i].hash_key, sizeof(void*)) == objs + i);
   }
+  clock_gettime(CLOCK_REALTIME, &tend);
   hash_table.ShowStats();
+  int64_t total_ns = (tend.tv_sec - tstart.tv_sec) * 1000000000 +
+                     (tend.tv_nsec - tstart.tv_nsec);
+  printf("%d lookup, cost %ld ns, %f ns/lookup\n",
+         number_objs,
+         total_ns,
+         (total_ns + 0.0) / number_objs);
 
   assert(hash_table.Insert(objs + 2) == false);
 

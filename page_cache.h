@@ -21,8 +21,13 @@ struct PageCacheItem {
   // Enclosing vaddr_range of this page.
   uint32_t vaddr_range_id;  // From parent hmem-instance-id.
 
-  // v2h map metadata for this virt-page.
-  V2HMapMetadata* v2hmap;
+  union {
+    // v2h map metadata for this virt-page.
+    V2HMapMetadata* v2hmap;
+    // The free-list wants each obj with a field to hold payload.
+    // This is to satisfy the free-list.
+    void * data;
+  };
 } __attribute__((__packed__));
 
 // Page cache is the 1st layer of cache that stores all
@@ -32,13 +37,15 @@ class PageCache {
   PageCache() {}
   virtual ~PageCache() { Release(); }
 
-  bool Init(uint32_t max_allowed_pages);
+  bool Init(const std::string& name, uint32_t max_allowed_pages);
   bool Release();
 
   bool AddPage(uint8_t* page,
                uint32_t size,
                uint32_t vaddr_range_id,
                V2HMapMetadata* v2hmap);
+
+  const std::string& name() const { return name_; }
 
  protected:
   uint32_t OverflowToNextLayer();
@@ -47,10 +54,12 @@ class PageCache {
   std::queue<PageCacheItem*> queue_;
 
   // A free-list of page-buffer-item metadata objs.
-  FreeList<PageCacheItem>* item_list_;
+  FreeList<PageCacheItem> item_list_;
 
   // Allow up to this many materialized pages in the queue.
   uint32_t max_allowed_pages_;
+
+  std::string name_;
 };
 
 #endif  // PAGE_CACHE_H_

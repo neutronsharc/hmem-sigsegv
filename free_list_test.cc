@@ -1,20 +1,31 @@
 #include <stdio.h>
 #include "free_list.h"
 
-typedef struct MyObj_s {
+struct MyObj {
   uint64_t id;
-  char name[128];
-} MyObj;
+
+  MyObj *next;
+  MyObj *prev;
+
+  void *data;
+};
 
 static void TestFreeList() {
-  FreeList<MyObj> list(100);
-  list.Dump();
+  FreeList<MyObj> list;
+  uint32_t number_objects = 1000;
+  uint32_t payload_size = 4096;
+  bool pin_memory = true;
+  assert(list.Init("test list", number_objects, payload_size, pin_memory) ==
+         true);
+  assert(list.AvailObjects() == number_objects);
+  assert(list.TotalObjects() == number_objects);
+  list.ShowStats();
 
-  MyObj *objs[100];
-  for (uint32_t i = 0; i < 100; i++) {
+  MyObj *objs[number_objects];
+  for (uint32_t i = 0; i <number_objects; i++) {
     objs[i] = list.New();
   }
-  list.Dump();
+  list.ShowStats();
   assert(list.AvailObjects() == 0);
 
   list.Free(objs[0]);
@@ -23,14 +34,15 @@ static void TestFreeList() {
   MyObj *one_obj = list.New();
   assert(one_obj == objs[0]);
 
-  for (uint32_t i = 0; i < 100; i++) {
+  for (uint32_t i = 0; i < number_objects; i++) {
     list.Free(objs[i]);
   }
-  assert(list.AvailObjects() == 100);
-  list.Dump();
+  assert(list.AvailObjects() == number_objects);
+  list.ShowStats();
 }
 
 int main(int argc, char **argv) {
   TestFreeList();
+  printf("PASS.\n");
   return 0;
 }
