@@ -10,7 +10,7 @@
 struct TestObject {
   TestObject *hash_next;
   void *hash_key;
-  uint32_t key_size;
+  //uint32_t key_size;
 
   uint64_t data;
 };
@@ -29,11 +29,11 @@ static void TestHashTable() {
 
   for (uint32_t i = 0; i < number_objs; ++i) {
     objs[i].hash_key = malloc(512);
-    objs[i].key_size = sizeof(void*);
+    //objs[i].key_size = sizeof(void*);
   }
 
   for (uint32_t i = 0; i < number_objs; ++i) {
-    assert(hash_table.Insert(objs + i) == true);
+    assert(hash_table.Insert(objs + i, sizeof(void*)) == true);
   }
   assert(hash_table.GetNumberObjects() == number_objs);
   struct timespec tstart, tend;
@@ -50,7 +50,7 @@ static void TestHashTable() {
          total_ns,
          (total_ns + 0.0) / number_objs);
 
-  assert(hash_table.Insert(objs + 2) == false);
+  assert(hash_table.Insert(objs + 2, sizeof(void*)) == false);
 
   assert(hash_table.Lookup(objs[3].hash_key, sizeof(void*)) == &objs[3]);
 
@@ -60,6 +60,7 @@ static void TestHashTable() {
 
   for (uint32_t i = 0; i < number_objs; ++i) {
     hash_table.Remove(objs[i].hash_key, sizeof(void*));
+    assert(objs[i].hash_next == NULL);
     free(objs[i].hash_key);
   }
   hash_table.ShowStats();

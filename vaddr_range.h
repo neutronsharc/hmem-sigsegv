@@ -21,8 +21,8 @@ struct V2HMapMetadata {
   uint32_t exist_ssd_cache : 1;
   uint32_t exist_hdd_file : 1;
   uint32_t dirty_page_cache : 1;
-  uint32_t dirty_dirty_ram_cache : 1;
-  uint32_t dirty_dirty_ssd_cache : 1;
+  uint32_t dirty_ram_cache : 1;
+  uint32_t dirty_ssd_cache : 1;
   uint32_t reserved : 1;
 
   uint32_t hmem_id : 8;

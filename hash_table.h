@@ -30,14 +30,16 @@ class HashTable {
   };
 
   // Prepare internal structs.
-  bool Init(const char* name, uint32_t bucket_size, bool pin_in_memory);
+  bool Init(const std::string& name,
+            uint64_t number_buckets,
+            bool pin_in_memory);
 
   // Free up internal structs.
   bool Release();
 
   // Insert an obj to hash table. Return true if insert succeeds.
   // False if an obj with same key already exists.
-  bool Insert(T* obj);
+  bool Insert(T* obj, uint32_t key_size);
 
   T* Lookup(void* key, uint32_t key_size);
 
@@ -48,9 +50,9 @@ class HashTable {
   // Find the address of pointer that points to an obj of "key".
   T** FindPrevObjPos(void* key, uint32_t key_size);
 
-  uint32_t GetNumberObjects() { return number_objects_; }
+  uint64_t GetNumberObjects() { return number_objects_; }
 
-  uint32_t GetNumberBuckets() { return number_buckets_; }
+  uint64_t GetNumberBuckets() { return number_buckets_; }
 
   void ShowStats();
 
@@ -62,10 +64,10 @@ class HashTable {
   T** buckets_;
 
   // Number of elements in bucket-array.
-  uint32_t number_buckets_;
+  uint64_t number_buckets_;
 
   // How many objects are stored in this hash table.
-  uint32_t number_objects_;
+  uint64_t number_objects_;
 
   // name of this hash table.
   std::string name_;
@@ -85,18 +87,18 @@ class HashTable {
 };
 
 template <class T>
-bool HashTable<T>::Init(const char* name,
-                        uint32_t bucket_size,
+bool HashTable<T>::Init(const std::string& name,
+                        uint64_t number_buckets,
                         bool pin_in_memory) {
   uint32_t alignment = 4096;
-  uint64_t total_byte_size = bucket_size * sizeof(T*);
+  uint64_t total_byte_size = number_buckets * sizeof(T*);
 
   assert(posix_memalign((void**)&buckets_, alignment, total_byte_size) == 0);
   // All buckets are empty at beginning.
   memset(buckets_, 0, total_byte_size);
   assert(mlock(buckets_, total_byte_size) == 0);
 
-  number_buckets_ = bucket_size;
+  number_buckets_ = number_buckets;
   number_objects_ = 0;
   deepest_collision_ = 0;
   number_collisions_ = 0;
@@ -123,13 +125,13 @@ bool HashTable<T>::Release() {
 }
 
 template <class T>
-bool HashTable<T>::Insert(T* obj) {
+bool HashTable<T>::Insert(T* obj, uint32_t key_size) {
   ++number_inserts_;
-  if (Lookup((void*)obj->hash_key, obj->key_size) != NULL) {
+  if (Lookup((void*)obj->hash_key, key_size) != NULL) {
     err("obj of key=%p already exists in hash table\n", obj->hash_key);
     return false;
   }
-  uint32_t hash_value = hash(&obj->hash_key, obj->key_size, 0);
+  uint32_t hash_value = hash(&obj->hash_key, key_size, 0);
   uint32_t bucket_idx = hash_value % number_buckets_;
   obj->hash_next = buckets_[bucket_idx];
   buckets_[bucket_idx] = obj;
@@ -198,7 +200,7 @@ T* HashTable<T>::Remove(void* key, uint32_t key_size) {
 template <class T>
 void HashTable<T>::ShowStats() {
   fprintf(stderr,
-          "==================\nHashtable: \"%s\", %d buckets, %d objs, \n"
+          "==================\nHashtable: \"%s\", %ld buckets, %ld objs, \n"
           "inserts = %ld, lookups = %ld, removes = %ld, hit = %ld, "
           "miss = %ld, deepest-collision = %ld, collisions = %ld\n"
           "=============================\n",

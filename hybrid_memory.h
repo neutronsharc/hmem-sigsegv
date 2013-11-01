@@ -11,14 +11,20 @@
 
 #include "hybrid_memory_const.h"
 #include "page_cache.h"
+#include "ram_cache.h"
+#include "sigsegv_handler.h"
 
 class PageCache;
+class RAMCache;
 
 // An instance of hybrid-memory.
 class HybridMemory {
  public:
-  HybridMemory() {}
-  virtual ~HybridMemory() {}
+  HybridMemory() : ready_(false) {}
+
+  virtual ~HybridMemory() {
+    Release();
+  }
 
   // Allocate internal resources, setup internal structs.
   bool Init(const std::string &ssd_filename,
@@ -37,7 +43,12 @@ class HybridMemory {
 
   PageCache* GetPageCache() { return &page_cache_; }
 
+  RAMCache* GetRAMCache() { return &ram_cache_; }
+
  protected:
+  // Indicate if this hmem is ready.
+  bool ready_;
+
   pthread_mutex_t lock_;
 
   std::string ssd_filename_;
@@ -48,7 +59,11 @@ class HybridMemory {
   uint64_t ram_buffer_size_;
   uint64_t ssd_buffer_size_;
 
+  // L1 cache.
   PageCache page_cache_;
+
+  // L2 cache.
+  RAMCache ram_cache_;
 };
 
 // One process can create only one HybridMemoryGroup, because all threads in
@@ -85,22 +100,5 @@ class HybridMemoryGroup {
   uint32_t number_hmem_instances_;
   HybridMemory hmem_instances_[MAX_HMEM_INSTANCES];
 };
-
-/////////////////////////////////////////////////////////
-// Global functions to init/exit hybrid memory.
-bool InitHybridMemory(const std::string& ssd_dirpath,
-                      const std::string& hmem_group_name,
-                      uint64_t page_buffer_size,
-                      uint64_t ram_buffer_size,
-                      uint64_t ssd_buffer_size,
-                      uint32_t number_hmem_instance);
-
-void ReleaseHybridMemory();
-
-void *hmem_alloc(uint64_t size);
-
-void hmem_free(void *address);
-
-uint64_t GetNumberOfPageFaults();
 
 #endif  // HYBRID_MEMORY_H_

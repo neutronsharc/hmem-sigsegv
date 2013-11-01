@@ -7,7 +7,7 @@
 #include <pthread.h>
 
 #include "debug.h"
-#include "hybrid_memory.h"
+#include "hybrid_memory_lib.h"
 #include "hybrid_memory_const.h"
 
 struct TaskItem {
@@ -17,6 +17,59 @@ struct TaskItem {
   pthread_mutex_t lock;
   pthread_t  thread_id;
 };
+
+static void* AccessHybridMemoryWriteThenRead(void *arg) {
+  struct timespec tstart, tend;
+  clock_gettime(CLOCK_REALTIME, &tstart);
+  struct TaskItem *task = (struct TaskItem*)arg;
+  uint64_t number_of_pages = task->size >> PAGE_BITS;
+  uint32_t rand_seed =
+      (tstart.tv_nsec + (uint32_t)task->thread_id) % number_of_pages;
+  dbg("thread %u: use rand-seed %d, num-pages %ld\n",
+      (uint32_t)task->thread_id,
+      rand_seed,
+      number_of_pages);
+
+  int64_t latency_ns = 0;
+  int64_t max_write_latency_ns = 0;
+  int64_t max_read_latency_ns = 0;
+  pthread_mutex_lock(&task->lock);
+  // Write round.
+  for (uint64_t i = 0; i < task->number_access; ++i) {
+    //uint32_t page_number = rand_r(&rand_seed) % number_of_pages;
+    uint64_t page_number = i % number_of_pages;
+    uint64_t* p = (uint64_t*)(task->buffer + (page_number << PAGE_BITS) + 16);
+    clock_gettime(CLOCK_REALTIME, &tstart);
+    *p = i;
+    clock_gettime(CLOCK_REALTIME, &tend);
+    latency_ns = (tend.tv_sec - tstart.tv_sec) * 1000000000 +
+                 (tend.tv_nsec - tstart.tv_nsec);
+    if (latency_ns > max_write_latency_ns) {
+      max_write_latency_ns = latency_ns;
+    }
+  }
+  // Read round.
+  for (uint64_t i = 0; i < task->number_access; ++i) {
+    uint64_t page_number = i % number_of_pages;
+    uint64_t* p = (uint64_t*)(task->buffer + (page_number << PAGE_BITS) + 16);
+    clock_gettime(CLOCK_REALTIME, &tstart);
+    if (*p != i) {
+      err("vaddr %p: should be 0x%lx, data = %lx\n", p, i, *p);
+    }
+    clock_gettime(CLOCK_REALTIME, &tend);
+    latency_ns = (tend.tv_sec - tstart.tv_sec) * 1000000000 +
+                 (tend.tv_nsec - tstart.tv_nsec);
+    if (latency_ns > max_read_latency_ns) {
+      max_read_latency_ns = latency_ns;
+    }
+  }
+  pthread_mutex_unlock(&task->lock);
+  dbg("Thread %u: max-write-latency = %f usec, max-read-lat = %f usec\n",
+      (uint32_t)task->thread_id,
+      max_write_latency_ns / 1000.0,
+      max_read_latency_ns / 1000.0);
+  pthread_exit(NULL);
+}
 
 static void* AccessHybridMemory(void *arg) {
   struct timespec tstart, tend;
@@ -34,8 +87,8 @@ static void* AccessHybridMemory(void *arg) {
   int64_t max_latency_ns = 0;
   pthread_mutex_lock(&task->lock);
   for (uint64_t i = 0; i < task->number_access; ++i) {
-    uint32_t page_number = rand_r(&rand_seed) % number_of_pages;
-    //uint32_t page_number = i % number_of_pages;
+    //uint32_t page_number = rand_r(&rand_seed) % number_of_pages;
+    uint32_t page_number = i % number_of_pages;
     uint8_t* p = (uint8_t*)(task->buffer + (page_number << PAGE_BITS) + 16);
     clock_gettime(CLOCK_REALTIME, &tstart);
     // 50% read, 50% write.
@@ -64,8 +117,8 @@ static void TestMultithreadAccess() {
   // Prepare hybrid-mem.
   uint64_t one_mega = 1024ULL * 1024;
   uint32_t num_hmem_instances = 16;
-  uint64_t page_buffer_size = one_mega * 500;
-  uint64_t ram_buffer_size = one_mega * 10000;
+  uint64_t page_buffer_size = one_mega;
+  uint64_t ram_buffer_size = one_mega * 100;
   uint64_t ssd_buffer_size = one_mega* 100000;
   assert(InitHybridMemory("ssd",
                           "hmem",
@@ -75,15 +128,15 @@ static void TestMultithreadAccess() {
                           num_hmem_instances) == true);
 
   // Allocate a big virt-memory, shared by all threads.
-  uint64_t number_pages = 1000ULL * 1000 * 10;
+  uint64_t number_pages = 1000ULL * 20;
   uint64_t buffer_size = number_pages * 4096;
   uint8_t* buffer = (uint8_t*)hmem_alloc(buffer_size);
   assert(buffer != NULL);
 
   // Start parallel threads to access the virt-memory.
-  uint32_t max_threads = 4;
+  uint32_t max_threads = 1;
   TaskItem tasks[max_threads];
-  uint64_t number_access = 1000ULL * 500;
+  uint64_t number_access = 1000ULL * 100;
 
   for (uint32_t number_threads = 1; number_threads <= max_threads; number_threads *= 2) {
     for (uint32_t i = 0; i < number_threads; ++i) {
@@ -93,7 +146,8 @@ static void TestMultithreadAccess() {
       pthread_mutex_init(&tasks[i].lock, NULL);
       pthread_mutex_lock(&tasks[i].lock);
       assert(pthread_create(
-                 &tasks[i].thread_id, NULL, AccessHybridMemory, &tasks[i]) ==
+                 //&tasks[i].thread_id, NULL, AccessHybridMemory, &tasks[i]) ==
+                 &tasks[i].thread_id, NULL, AccessHybridMemoryWriteThenRead, &tasks[i]) ==
              0);
     }
     sleep(1);

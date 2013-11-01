@@ -8,34 +8,44 @@
 #include <string>
 
 #include "avl.h"
+#include "hybrid_memory.h"
 #include "hybrid_memory_const.h"
 #include "vaddr_range.h"
 #include "page_cache.h"
 
-bool PageCache::Init(const std::string& name, uint32_t max_allowed_pages) {
-  assert(max_allowed_pages > 0);
-  max_allowed_pages_ = max_allowed_pages;
+bool PageCache::Init(HybridMemory* hmem,
+                     const std::string& name,
+                     uint64_t max_cache_size) {
+  max_cache_size_ = RoundUpToPageSize(max_cache_size);
+  assert(max_cache_size_ > 0);
   bool pin_memory = true;
-  assert(item_list_.Init(
-             name + "-pagecache-itemlist", max_allowed_pages, 0, pin_memory) ==
-         true);
+  uint32_t payload_data = 0;
+  assert(item_list_.Init(name + "-itemlist",
+                         max_cache_size_ >> PAGE_BITS,
+                         payload_data,
+                         pin_memory) == true);
+  hybrid_memory_ = hmem;
   name_ = name;
   return true;
 }
 
 bool PageCache::Release() {
-  if (queue_.size() > 0) {
-    // TODO: release pages still in the queue.
-    dbg("Has %ld pages in page-cache\n", queue_.size());
+  if (ready_) {
+    if (queue_.size() > 0) {
+      // TODO: release pages still in the queue.
+      dbg("Has %ld pages in page-cache\n", queue_.size());
+    }
+    item_list_.Release();
+    ready_ = false;
   }
-  item_list_.Release();
   return true;
 }
 
-bool PageCache::AddPage(uint8_t* page,
+bool PageCache::AddPage(void* page,
                         uint32_t size,
                         uint32_t vaddr_range_id,
-                        V2HMapMetadata* v2hmap) {
+                        V2HMapMetadata* v2hmap,
+                        bool is_dirty) {
   PageCacheItem* item = item_list_.New();
   if (item == NULL) {
     for (uint32_t i = 0; i < 10; ++i) {
@@ -62,7 +72,10 @@ bool PageCache::AddPage(uint8_t* page,
       //   }
       //   mprotect(olditem, NONE);
       //   madvise(olditem, dontneed);
+      hybrid_memory_->GetRAMCache()->AddPage(
+          olditem->page, olditem->size, olditem->v2hmap);
       olditem->v2hmap->exist_page_cache = 0;
+      olditem->v2hmap->dirty_page_cache = 0;
       assert(madvise(olditem->page, olditem->size, MADV_DONTNEED) == 0);
       assert(mprotect(olditem->page, olditem->size, PROT_NONE) == 0);
       item_list_.Free(olditem);
@@ -74,6 +87,8 @@ bool PageCache::AddPage(uint8_t* page,
   item->size = size;
   item->vaddr_range_id = vaddr_range_id;
   item->v2hmap = v2hmap;
+  item->v2hmap->exist_page_cache = 1;
+  item->v2hmap->dirty_page_cache = is_dirty ? 1 : 0;
   queue_.push(item);
   return true;
 }

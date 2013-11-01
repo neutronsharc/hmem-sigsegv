@@ -9,7 +9,8 @@ LDFLAGS = -lpthread -pthread -lrt
 exes = newhmem 
 tests = vaddr_range_test hash_table_test free_list_test lru_list_test
 
-objs = hybrid_memory.o page_cache.o avl.o vaddr_range.o sigsegv_handler.o utils.o hash.o
+objs = hybrid_memory.o page_cache.o avl.o vaddr_range.o sigsegv_handler.o \
+	utils.o hash.o ram_cache.o hybrid_memory_lib.o
 
 all : ${exes} ${tests}
 

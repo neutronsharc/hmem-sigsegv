@@ -9,17 +9,18 @@
 #include "free_list.h"
 
 struct V2HMapMetadata;
+struct HybridMemory;
 
 // Each materialized page is represented by a page-buffer-item.
 struct PageCacheItem {
-  // The materialized page.
-  uint8_t* page;
+  // The virt-address page which is materialized.
+  void* page;
 
-  // Size of the page.
+  // Size of the data in virt-page. At present it's always page size.
   uint32_t size;
 
   // Enclosing vaddr_range of this page.
-  uint32_t vaddr_range_id;  // From parent hmem-instance-id.
+  uint32_t vaddr_range_id;
 
   union {
     // v2h map metadata for this virt-page.
@@ -34,21 +35,30 @@ struct PageCacheItem {
 // materialized pages (virtual pages that have physical pages allocated by OS).
 class PageCache {
  public:
-  PageCache() {}
+  PageCache() : ready_(false), hybrid_memory_(NULL) {}
   virtual ~PageCache() { Release(); }
 
-  bool Init(const std::string& name, uint32_t max_allowed_pages);
+  bool Init(HybridMemory* hmem,
+            const std::string& name,
+            uint64_t max_cache_size);
+
   bool Release();
 
-  bool AddPage(uint8_t* page,
+  // Add a new pae to this layer of caching.
+  bool AddPage(void* page,
                uint32_t size,
                uint32_t vaddr_range_id,
-               V2HMapMetadata* v2hmap);
+               V2HMapMetadata* v2hmap,
+               bool is_dirty);
 
   const std::string& name() const { return name_; }
 
  protected:
   uint32_t OverflowToNextLayer();
+
+  bool ready_;
+
+  HybridMemory* hybrid_memory_;
 
   // The queue of materialized pages in the page buffer.
   std::queue<PageCacheItem*> queue_;
@@ -57,7 +67,7 @@ class PageCache {
   FreeList<PageCacheItem> item_list_;
 
   // Allow up to this many materialized pages in the queue.
-  uint32_t max_allowed_pages_;
+  uint64_t max_cache_size_;
 
   std::string name_;
 };
