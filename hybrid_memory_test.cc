@@ -16,6 +16,8 @@ struct TaskItem {
   uint64_t number_access;
   pthread_mutex_t lock;
   pthread_t  thread_id;
+  bool sequential;  // is it sequential / random workload?
+  uint32_t id;
 };
 
 static void* AccessHybridMemoryWriteThenRead(void *arg) {
@@ -25,20 +27,28 @@ static void* AccessHybridMemoryWriteThenRead(void *arg) {
   uint64_t number_of_pages = task->size >> PAGE_BITS;
   uint32_t rand_seed =
       (tstart.tv_nsec + (uint32_t)task->thread_id) % number_of_pages;
-  dbg("thread %u: use rand-seed %d, num-pages %ld\n",
-      (uint32_t)task->thread_id,
+  dbg("Thread %u: use rand-seed %d, num-pages %ld\n",
+      task->id,  //(uint32_t)task->thread_id,
       rand_seed,
       number_of_pages);
 
   int64_t latency_ns = 0;
   int64_t max_write_latency_ns = 0;
   int64_t max_read_latency_ns = 0;
+  uint64_t target_page_number;
+  uint64_t faults_step1, faults_step2, faults_step3;
+  //////////////////////////////////////////
   pthread_mutex_lock(&task->lock);
+  faults_step1 = GetNumberOfPageFaults();
   // Write round.
   for (uint64_t i = 0; i < task->number_access; ++i) {
-    //uint32_t page_number = rand_r(&rand_seed) % number_of_pages;
-    uint64_t page_number = i % number_of_pages;
-    uint64_t* p = (uint64_t*)(task->buffer + (page_number << PAGE_BITS) + 16);
+    if (task->sequential) {
+      target_page_number = i % number_of_pages;
+    } else {
+      //target_page_number = rand_r(&rand_seed) % number_of_pages;
+      target_page_number = rand_r(&rand_seed) % task->number_access;
+    }
+    uint64_t* p = (uint64_t*)(task->buffer + (target_page_number << PAGE_BITS) + 16);
     clock_gettime(CLOCK_REALTIME, &tstart);
     *p = i;
     clock_gettime(CLOCK_REALTIME, &tend);
@@ -48,13 +58,23 @@ static void* AccessHybridMemoryWriteThenRead(void *arg) {
       max_write_latency_ns = latency_ns;
     }
   }
+  faults_step2 = GetNumberOfPageFaults();
   // Read round.
   for (uint64_t i = 0; i < task->number_access; ++i) {
-    uint64_t page_number = i % number_of_pages;
-    uint64_t* p = (uint64_t*)(task->buffer + (page_number << PAGE_BITS) + 16);
+    if (task->sequential) {
+      target_page_number = i % number_of_pages;
+    } else {
+      //target_page_number = rand_r(&rand_seed) % number_of_pages;
+      target_page_number = rand_r(&rand_seed) % task->number_access;
+    }
+    uint64_t* p = (uint64_t*)(task->buffer + (target_page_number << PAGE_BITS) + 16);
     clock_gettime(CLOCK_REALTIME, &tstart);
     if (*p != i) {
-      err("vaddr %p: should be 0x%lx, data = %lx\n", p, i, *p);
+      if (task->sequential) {
+        err("vaddr %p: should be 0x%lx, data = %lx\n", p, i, *p);
+      } else {
+        target_page_number = *p;
+      }
     }
     clock_gettime(CLOCK_REALTIME, &tend);
     latency_ns = (tend.tv_sec - tstart.tv_sec) * 1000000000 +
@@ -63,11 +83,17 @@ static void* AccessHybridMemoryWriteThenRead(void *arg) {
       max_read_latency_ns = latency_ns;
     }
   }
+  faults_step3 = GetNumberOfPageFaults();
   pthread_mutex_unlock(&task->lock);
-  dbg("Thread %u: max-write-latency = %f usec, max-read-lat = %f usec\n",
-      (uint32_t)task->thread_id,
+  //////////////////////////////////////////
+
+  // Report stats.
+  dbg("Thread %d: max-write-latency = %f usec, max-read-lat = %f usec\n"
+      "\t\twrite-round page faults=%ld, read-round page-faults = %ld\n",
+      task->id,
       max_write_latency_ns / 1000.0,
-      max_read_latency_ns / 1000.0);
+      max_read_latency_ns / 1000.0,
+      faults_step2 - faults_step1, faults_step3 - faults_step2);
   pthread_exit(NULL);
 }
 
@@ -116,8 +142,8 @@ static void* AccessHybridMemory(void *arg) {
 static void TestMultithreadAccess() {
   // Prepare hybrid-mem.
   uint64_t one_mega = 1024ULL * 1024;
-  uint32_t num_hmem_instances = 8;
-  uint64_t page_buffer_size = one_mega * 16;
+  uint32_t num_hmem_instances = 1;
+  uint64_t page_buffer_size = one_mega * 10; //4096 * 16; //one_mega * 16;
   uint64_t ram_buffer_size = one_mega * 1000;
   uint64_t ssd_buffer_size = one_mega* 100000;
   assert(InitHybridMemory("ssd",
@@ -136,14 +162,16 @@ static void TestMultithreadAccess() {
   // Start parallel threads to access the virt-memory.
   uint32_t max_threads = 1;
   TaskItem tasks[max_threads];
-  uint64_t number_access = 1000UL * 200;
-      //ram_buffer_size / 4096 - 1; //1000ULL * 100;
+  //uint64_t number_access = ram_buffer_size / 4096;
+  uint64_t number_access = 1000UL * 100;
 
   for (uint32_t number_threads = 1; number_threads <= max_threads; number_threads *= 2) {
     for (uint32_t i = 0; i < number_threads; ++i) {
       tasks[i].buffer = buffer;
       tasks[i].size = buffer_size;
       tasks[i].number_access = number_access;
+      tasks[i].sequential = false;
+      tasks[i].id = i;
       pthread_mutex_init(&tasks[i].lock, NULL);
       pthread_mutex_lock(&tasks[i].lock);
       assert(pthread_create(
@@ -167,15 +195,17 @@ static void TestMultithreadAccess() {
     uint64_t number_faults = p2_faults - p1_faults;
     uint64_t total_usec = (tend.tv_sec - tstart.tv_sec) * 1000000 +
                           (tend.tv_usec - tstart.tv_usec);
+    // Each worker thread does one write-round and one read-round.
+    uint64_t total_accesses = number_access * 2 * number_threads;
     printf(
         "%d threads, %ld access, %ld page faults in %ld usec, %f usec/page\n"
         "throughput = %ld access / sec\n\n\n",
         number_threads,
-        number_access * number_threads,
+        total_accesses,
         number_faults,
         total_usec,
         (total_usec + 0.0) / number_faults,
-        (uint64_t)(number_access * number_threads / (total_usec / 1000000.0)));
+        (uint64_t)(total_accesses / (total_usec / 1000000.0)));
   }
 
   // Free hmem.

@@ -69,9 +69,10 @@ bool RAMCache::AddPage(void* page,
 
   RAMCacheItem* item = hash_table_.Lookup(page, sizeof(void*));
   if (item) {
-    // The virt-page already has a cached copy in current layer.
-    assert(item->hash_key == page);
     assert(item->v2hmap == v2hmap);
+    assert(item->hash_key == page);
+    assert(v2hmap->exist_ram_cache == 1);
+    // The virt-page already has a cached copy in current layer.
     if (v2hmap->dirty_page_cache) {
       memcpy(item->data, page, obj_size);
       item->v2hmap->dirty_ram_cache = 1;

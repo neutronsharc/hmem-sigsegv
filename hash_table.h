@@ -115,6 +115,7 @@ bool HashTable<T>::Init(const std::string& name,
 template <class T>
 bool HashTable<T>::Release() {
   if (ready_) {
+    ShowStats();
     uint64_t total_byte_size = number_buckets_ * sizeof(T*);
     munlock(buckets_, total_byte_size);
     free(buckets_);
@@ -131,6 +132,12 @@ bool HashTable<T>::Insert(T* obj, uint32_t key_size) {
     err("obj of key=%p already exists in hash table\n", obj->hash_key);
     return false;
   }
+  // In "lookup" we inc the number_lookups counter. This makes the meaning
+  // of "number_lookups" misleading.
+  // Decide to let "number_xxx" denote ONLY the number of xxx ops issued
+  // by users.
+  --number_lookups_;
+  --number_misses_;
   uint32_t hash_value = hash(&obj->hash_key, key_size, 0);
   uint32_t bucket_idx = hash_value % number_buckets_;
   obj->hash_next = buckets_[bucket_idx];
@@ -200,7 +207,7 @@ T* HashTable<T>::Remove(void* key, uint32_t key_size) {
 template <class T>
 void HashTable<T>::ShowStats() {
   fprintf(stderr,
-          "==================\nHashtable: \"%s\", %ld buckets, %ld objs, \n"
+          "\n********\nHashtable: \"%s\", %ld buckets, %ld objs, \n"
           "inserts = %ld, lookups = %ld, removes = %ld, hit = %ld, "
           "miss = %ld, deepest-collision = %ld, collisions = %ld\n"
           "=============================\n",

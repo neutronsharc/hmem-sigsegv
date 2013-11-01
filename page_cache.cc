@@ -47,8 +47,10 @@ bool PageCache::AddPage(void* page,
                         V2HMapMetadata* v2hmap,
                         bool is_dirty) {
   PageCacheItem* item = item_list_.New();
+  // Try to free up this many cached pages.
+  uint32_t release_items = 10;
   if (item == NULL) {
-    for (uint32_t i = 0; i < 10; ++i) {
+    for (uint32_t i = 0; queue_.size() > 0 && i < release_items; ++i) {
       PageCacheItem* olditem = (PageCacheItem*)queue_.front();
       queue_.pop();
       assert(olditem != NULL);
