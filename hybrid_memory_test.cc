@@ -74,9 +74,9 @@ static void* AccessHybridMemoryWriteThenRead(void *arg) {
     }
     uint64_t* p = (uint64_t*)(task->buffer + (target_page_number << PAGE_BITS) + 16);
     clock_gettime(CLOCK_REALTIME, &tstart);
-    if (*p != i) {
+    if (*p != 0xA5) {
       if (task->sequential) {
-        //err("vaddr %p: should be 0x%lx, data = %lx\n", p, i, *p);
+        err("vaddr %p: should be 0x%lx, data = %lx\n", p, i, *p);
       } else {
       }
     }
@@ -174,14 +174,15 @@ static void TestMultithreadAccess() {
   uint64_t real_memory_pages = ram_buffer_size / 4096;
   uint64_t total_pages = number_access;
 
-  for (uint32_t number_threads = max_threads; number_threads <= max_threads; number_threads *= 2) {
+  for (uint32_t number_threads = max_threads; number_threads <= max_threads;
+       number_threads *= 2) {
     uint64_t per_task_pages = total_pages / number_threads;
     uint64_t per_task_access = number_access / number_threads;
     uint64_t begin_page = 0;
     for (uint32_t i = 0; i < number_threads; ++i) {
       tasks[i].buffer = buffer;
       tasks[i].size = buffer_size;
-      tasks[i].sequential = false;
+      tasks[i].sequential = true;
       tasks[i].id = i;
       tasks[i].total_tasks = number_threads;
 

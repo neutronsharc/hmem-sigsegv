@@ -1,3 +1,4 @@
+#include <bitset>   
 #include <stdio.h>
 #include "lru_list.h"
 
@@ -60,6 +61,11 @@ static void TestLruList() {
 }
 
 int main(int argc, char **argv) {
+  std::bitset<1024> bs;
+  printf("bitset<1024> size = %ld, <28> = %ld, <1048576>=%ld\n",
+         sizeof(bs),
+         sizeof(std::bitset<28>), sizeof(std::bitset<1048576>));
+  return 0;
   TestLruList();
   printf("PASS\n");
   return 0;

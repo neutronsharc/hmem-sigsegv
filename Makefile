@@ -7,7 +7,7 @@ CFLAGS = -c ${INC}
 LDFLAGS = -lpthread -pthread -lrt
 
 exes = newhmem 
-tests = vaddr_range_test hash_table_test free_list_test lru_list_test
+tests = vaddr_range_test hash_table_test free_list_test lru_list_test bitmap_test
 
 objs = hybrid_memory.o page_cache.o avl.o vaddr_range.o sigsegv_handler.o \
 	utils.o hash.o ram_cache.o hybrid_memory_lib.o
@@ -29,6 +29,9 @@ free_list_test : free_list_test.o free_list.h utils.o
 lru_list_test : lru_list_test.o lru_list.h
 	${CC} ${INC} $^ -o $@ ${LDFLAGS} 
 
+bitmap_test : bitmap_test.o bitmap.h
+	${CC} ${INC} $^ -o $@ ${LDFLAGS} 
+
 %.o: %.cc *.h 
 	$(CC) ${CFLAGS} -c $< -o $@
 
@@ -36,4 +39,4 @@ lru_list_test : lru_list_test.o lru_list.h
 	$(CC) ${CFLAGS} -c $< -o $@
 
 clean :
-	rm -f *.o ${exes} ${objs} ${tests}
+	rm -f *.o ${exes} ${objs} ${tests} *.gch a.out

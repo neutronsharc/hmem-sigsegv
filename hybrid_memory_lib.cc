@@ -196,7 +196,8 @@ static void SigSegvAction(int sig, siginfo_t* sig_info, void* ucontext) {
     // This is a first-access to a virt-page that doesn't exist in file.
     // Fall through.
     ++unfound_pages;
-    memset(fault_page, 0xA5, PROT_WRITE);
+    *fault_address = 0xA5;
+    //memset(fault_page, 0xA5, PROT_WRITE);
   } else {
     ++found_pages;
   }
