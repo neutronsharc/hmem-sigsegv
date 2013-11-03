@@ -185,8 +185,7 @@ static void SigSegvAction(int sig, siginfo_t* sig_info, void* ucontext) {
   //   Read-fault: (write-protect, populate the page, read-protect it), or,
   //   Writ-fault: (write-protect, populate the page).
   // After "write-protect" but before "populate the page", it's possible
-  // that
-  // another thread access this same page without triggering page fault,
+  // that another thread access this same page without triggering page fault,
   // hence getting incorrect value.
   // There is nothing we can do to guard against this race.
   // It's the user's responsibility to enforce a higher level lock
@@ -210,7 +209,7 @@ static void SigSegvAction(int sig, siginfo_t* sig_info, void* ucontext) {
     }
   }
   // The "fault_page" has been materialized by OS.  We should add this page
-  // to the list of materialized pages.
+  // to "page-cache", a list of materialized pages.
   // If this list exceeds limits, it will overflow to the next cache layer.
   bool is_dirty = rwerror ? true : false;
   hmem->GetPageCache()->AddPage(
