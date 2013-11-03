@@ -1,3 +1,32 @@
+
+==========================================================================
+==============        most basic sigsegv handler overhead
+
+
+at x200 laptop, core2-due,  2.4G,  8GB ram
+
+page fault =>  SIGSEGV handler => search page-cache/ram-cache for target,
+     memcpy(), then read protect:
+
+     1 thread,  1 hmem-instance.
+
+avg-lat = 11.52 usec / op
+
+   AccessHybridMemoryWriteThenRead: Thread 0: use rand-seed 5534332, num-pages
+   10000000
+   AccessHybridMemoryWriteThenRead: hmem found-pages=0, unfound-pages=10000
+   AccessHybridMemoryWriteThenRead: hmem found-pages=10000,
+   unfound-pages=10000
+   AccessHybridMemoryWriteThenRead: Thread 0: sequential-access:
+   max-write-latency = 451.664000 usec, max-read-lat = 453.758000 usec
+      write-round page faults=10000, read-round page-faults = 10000
+      1 threads, 20000 access, 20000 page faults in 230551 usec, 11.527550
+      usec/page
+      throughput = 86748 access / sec
+
+
+
+
 =============================================================
 =====		basic sigsegv fault overhead.
 

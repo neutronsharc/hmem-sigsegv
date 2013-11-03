@@ -49,11 +49,13 @@ static void* AccessHybridMemoryWriteThenRead(void *arg) {
   // Write round.
   for (uint64_t i = 0; i < task->number_access; ++i) {
     if (task->sequential) {
-      target_page_number = task->begin_page + i;
+      target_page_number = task->begin_page + (i % task->number_pages);
     } else {
-      target_page_number = task->begin_page + rand_r(&rand_seed) % task->number_pages;
+      target_page_number =
+        task->begin_page + rand_r(&rand_seed) % task->number_pages;
     }
-    uint64_t* p = (uint64_t*)(task->buffer + (target_page_number << PAGE_BITS) + 16);
+    uint64_t* p =
+      (uint64_t*)(task->buffer + (target_page_number << PAGE_BITS) + 16);
     clock_gettime(CLOCK_REALTIME, &tstart);
     *p = i;
     clock_gettime(CLOCK_REALTIME, &tend);
@@ -68,13 +70,16 @@ static void* AccessHybridMemoryWriteThenRead(void *arg) {
   // Read round.
   for (uint64_t i = 0; i < task->number_access; ++i) {
     if (task->sequential) {
-      target_page_number = task->begin_page + i;
+      target_page_number = task->begin_page + (i % task->number_pages);
     } else {
-      target_page_number = task->begin_page + rand_r(&rand_seed) % task->number_pages;
+      target_page_number =
+        task->begin_page + rand_r(&rand_seed) % task->number_pages;
     }
-    uint64_t* p = (uint64_t*)(task->buffer + (target_page_number << PAGE_BITS) + 16);
+    uint64_t* p =
+      (uint64_t*)(task->buffer + (target_page_number << PAGE_BITS) + 16);
     clock_gettime(CLOCK_REALTIME, &tstart);
-    if (*p != 0xA5) {
+    //if (*p != 0xA5) {
+    if (*p != i) {
       if (task->sequential) {
         err("vaddr %p: should be 0x%lx, data = %lx\n", p, i, *p);
       } else {
@@ -149,8 +154,8 @@ static void TestMultithreadAccess() {
   // Prepare hybrid-mem.
   uint64_t one_mega = 1024ULL * 1024;
   uint32_t num_hmem_instances = 1;
-  uint64_t page_buffer_size = one_mega; //one_mega * 10; //4096 * 16; //one_mega * 16;
-  uint64_t ram_buffer_size = one_mega * 10;
+  uint64_t page_buffer_size = one_mega; //one_mega * 10;
+  uint64_t ram_buffer_size = one_mega * 100;
   uint64_t ssd_buffer_size = one_mega* 100000;
   assert(InitHybridMemory("ssd",
                           "hmem",
@@ -169,14 +174,13 @@ static void TestMultithreadAccess() {
   uint32_t max_threads = 1;
   TaskItem tasks[max_threads];
   //uint64_t number_access = ram_buffer_size / 4096;
-  uint64_t number_access = 1000UL * 10;
+  uint64_t number_access = 1000UL * 25;
 
   uint64_t real_memory_pages = ram_buffer_size / 4096;
-  uint64_t total_pages = number_access;
 
   for (uint32_t number_threads = max_threads; number_threads <= max_threads;
        number_threads *= 2) {
-    uint64_t per_task_pages = total_pages / number_threads;
+    uint64_t per_task_pages = real_memory_pages / number_threads;
     uint64_t per_task_access = number_access / number_threads;
     uint64_t begin_page = 0;
     for (uint32_t i = 0; i < number_threads; ++i) {
