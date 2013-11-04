@@ -124,7 +124,7 @@ bool PageAllocationTable::Init(const std::string& name, uint64_t total_pages) {
   bitmap_mask_ = (1ULL << bitmap_bits_) - 1;
 
   uint64_t pages_per_bitmap = 1 << BITMAP_BITS;
-  uint64_t number_bitmaps_ =
+  number_bitmaps_ =
     (total_pages + pages_per_bitmap - 1) / pages_per_bitmap;
   bitmaps_ = new Bitmap<(1ULL<<BITMAP_BITS)>[number_bitmaps_];
   assert(bitmaps_ != NULL);
@@ -214,6 +214,19 @@ bool PageAllocationTable::Release() {
   return true;
 }
 
+bool PageAllocationTable::AllocateOnePage(uint64_t *page) {
+  if (free_pages_ == 0) {
+    err("PAT \"%s\": No more free pages available.\n", name_.c_str());
+    return false;
+  }
+  std::vector<uint64_t> pages;
+  if (AllocatePages(1, &pages) == true) {
+    *page = pages[0];
+    return true;
+  }
+  return false;
+}
+
 bool PageAllocationTable::AllocatePages(
     uint64_t number_of_pages, std::vector<uint64_t>* pages) {
   if (free_pages_ < number_of_pages) {
@@ -223,11 +236,10 @@ bool PageAllocationTable::AllocatePages(
   }
   pages->clear();
   if (levels_ == 1) {
-    while (number_of_pages > 0) {
+    for (uint64_t i = 0; i < number_of_pages; ++i) {
       uint64_t page_number = bitmaps_[0].ffs(true);
       assert(page_number > 0);
       pages->push_back(page_number - 1);
-      --number_of_pages;
     }
   } else if (levels_ == 2) {
     std::vector<uint64_t> bitmap_indices;
@@ -252,14 +264,18 @@ bool PageAllocationTable::AllocatePages(
       uint64_t free_pages_from_pmd = pmd_free_pages[i];
       std::vector<uint64_t> bitmap_indices;
       std::vector<uint64_t> bitmap_free_pages;
-      assert(pgd_.GetPages(free_pages_from_pmd, &bitmap_indices, &bitmap_free_pages) ==
-          true);
+      assert(pmds_[pmd_index].GetPages(
+            free_pages_from_pmd, &bitmap_indices, &bitmap_free_pages) == true);
       for (uint64_t j = 0; j < bitmap_indices.size(); ++j) {
-        uint64_t bitmap_index = bitmap_indices[j];
+        uint64_t bitmap_index =
+          (pmd_index << pmd_bits_ ) | bitmap_indices[j];
         for (uint64_t k = 0; k < bitmap_free_pages[j]; ++k) {
           uint64_t page_number = bitmaps_[bitmap_index].ffs(true);
-          assert(page_number > 0);
-          pages->push_back((pmd_index << (bitmap_bits_ + pmd_bits_)) |
+          if (page_number ==0) {
+            err("err!\n");
+            assert(0);
+          }
+          pages->push_back((pmd_index << (pmd_bits_ + bitmap_bits_)) |
               (bitmap_index << bitmap_bits_) | (page_number - 1));
         }
       }
@@ -273,19 +289,19 @@ bool PageAllocationTable::AllocatePages(
 void PageAllocationTable::FreePage(uint64_t page) {
   assert(page >= 0 && page < total_pages_);
   if (levels_ == 1) {
-    bitmaps_[0].clear(page + 1);
+    bitmaps_[0].set(page + 1);
   } else if (levels_ == 2) {
     uint64_t bitmap_index = page >> bitmap_bits_;
     uint64_t page_offset = page & ((1ULL << bitmap_bits_) - 1);
     // bitmap uses page number [1, total-pages].
-    bitmaps_[bitmap_index].clear(page_offset + 1);
+    bitmaps_[bitmap_index].set(page_offset + 1);
     pgd_.ReleasePages(bitmap_index, 1);
   } else {
     uint64_t pmd_index = (page >> (bitmap_bits_ + pmd_bits_)) & pgd_mask_;
     uint64_t bitmap_index = page >> bitmap_bits_;
     uint64_t page_offset = page & bitmap_mask_;
     // bitmap uses page number [1, total-pages].
-    bitmaps_[bitmap_index].clear(page_offset + 1);
+    bitmaps_[bitmap_index].set(page_offset + 1);
     pmds_[pmd_index].ReleasePages(bitmap_index & pmd_mask_, 1);
     pgd_.ReleasePages(pmd_index, 1);
   }
@@ -294,13 +310,15 @@ void PageAllocationTable::FreePage(uint64_t page) {
 }
 
 void PageAllocationTable::ShowStats() {
-  fprintf(stderr, "PAT \"%s\", %d levels, pgd-pmd-bitmap = %d.%d.%d\n",
+  fprintf(stderr, "********\n"
+      "PAT \"%s\", %d levels, pgd-pmd-bitmap = %d.%d.%d\n",
       name_.c_str(), levels_, pgd_bits_, pmd_bits_, bitmap_bits_);
   fprintf(stderr, "Total-pages = %ld, free-pages = %ld, used-pages=%ld\n",
       total_pages_, free_pages_, used_pages_);
   fprintf(stderr, "The last bitmap is:\n%s\n",
       bitmaps_[number_bitmaps_ - 1].to_string().c_str());
   if (levels_ == 1) {
+    fprintf(stderr, "\n");
   } else if (levels_ == 2) {
     fprintf(stderr, "\n");
   } else {

@@ -82,6 +82,9 @@ class PageAllocationTable {
   // the page numbers to "pages" array.
   bool AllocatePages(uint64_t number_of_pages, std::vector<uint64_t>* pages);
 
+  // Grab one free page.
+  bool AllocateOnePage(uint64_t* page);
+
   // Free up a page.
   void FreePage(uint64_t page);
 
