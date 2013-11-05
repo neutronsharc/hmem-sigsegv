@@ -7,7 +7,8 @@ CFLAGS = -c ${INC}
 LDFLAGS = -lpthread -pthread -lrt
 
 exes = newhmem
-tests = vaddr_range_test hash_table_test free_list_test lru_list_test bitmap_test
+tests = vaddr_range_test hash_table_test free_list_test lru_list_test bitmap_test \
+	page_allocation_table_test
 
 objs = hybrid_memory.o page_cache.o avl.o vaddr_range.o sigsegv_handler.o \
 	utils.o hash.o ram_cache.o hybrid_memory_lib.o page_allocation_table.o

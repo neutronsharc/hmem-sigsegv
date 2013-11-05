@@ -1,4 +1,30 @@
 
+=====================================================================
+==============	flash-page  page allocation/free cost
+
+16M flash pages (64GB),  3-level page-alloc-table.
+
+36 bits flash-address =>  24 bit flash-pages => 1 bit/flash-page,  2^21 bytes bitmap 
+
+PAT "table-1", 3 levels, pgd-pmd-bitmap = 6.6.12
+
+(1)  single-page-alloc/free
+16777216 allocs, cost 33503627945 ns, 1996.971842 ns/alloc-one-page
+
+16777216 free, cost 815263559 ns, 48.593495 ns/free-page
+
+(2)  vector-pages-alloc/free
+
+alloc-group = 64 pgs:
+262144 allocs at 64 pgs-unit, cost 3004221168 ns, 11460.194275 ns/alloc for 64 pgs,  179 ns / page
+
+alloc-group = 16 pgs:
+1048576 allocs at 16 pgs-unit, cost 4295110680 ns, 4096.136742 ns/alloc,  306 ns / page.
+
+
+
+
+
 ==========================================================================
 ==============        most basic sigsegv handler overhead
 
