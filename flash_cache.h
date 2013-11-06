@@ -9,45 +9,30 @@
 #include "hash_table.h"
 #include "lru_list.h"
 #include "free_list.h"
+#include "page_allocation_table.h"
 
 struct RAMCacheItem;
 struct V2HMapMetadata;
 class HybridMemory;
 
-// Metadata for each object cached in this layer.
-// Currently each object represents a virtual-page.
-struct FlashCacheItem {
-  // pointers to link this item to LRU list.
-  RAMCacheItem *lru_prev;
-  RAMCacheItem *lru_next;
-
-  // Fields for hash-table.
-  // This is the virt-address that this ram-cache-data is associated to.
-  void *hash_key;
-  RAMCacheItem* hash_next;
-
-  // Back pointer to the V2H metadata.
-  V2HMapMetadata* v2hmap;
-
-  // Real memory where data of the virt-page is cached.
-  // This memory should be pinned, and page-aligned to
-  // facilitate direct IO to the next cache layer (flash or hdd).
-  void *data;
-  // TODO: As of now "data" ram-cache only caches page unit.
-  // In the future ram-cache may cache objs of arbitrary size.
-  // At that time we may add a field "obj_size".
+// Flash-to-virtual-address mapping metadata for each flash-page.
+struct F2VMapItem {
+  // Hosting vaddr-range id of the virtual-page cached in this flash-page.
+  uint32_t vaddress_range_id : 8;
+  // The cached virtual-pages's offset in page unit in the hosting vaddr-range.
+  uint32_t page_offset : 24;
 } __attribute__((__packed__));
 
-// Flash cache is the 3nd layer of cache in hybrid-memory arch.
-// It stores data that couldn't fit in the ram-cache.
+// Flash cache is the 3rd layer of cache that stores all
+// pages that overflows from 2st layer (RAM-cache).
 class FlashCache {
  public:
-  RAMCache() : ready_(false), hybrid_memory_(NULL) {}
-  virtual ~RAMCache() { Release(); }
+  FlashCache() : ready_(false), hybrid_memory_(NULL) {}
+  virtual ~FlashCache() { Release(); }
 
   bool Init(HybridMemory* hmem,
             const std::string& name,
-            uint64_t max_cache_size);
+            uint64_t number_flash_pages);
 
   bool Release();
 
@@ -89,22 +74,16 @@ class FlashCache {
 
   std::string name_;
 
-  // The lru list that sorts all cached objs.
-  LRUList<RAMCacheItem> lru_list_;
+  // Manages page allocation/free.
+  PageAllocationTable  page_allocate_table_;
 
-  // A hash table to lookup a cached item given a virtual-address.
-  HashTable<RAMCacheItem> hash_table_;
-
-  // All cache-items come from this free list.
-  // Each item has an embedded "data" field.
-  FreeList<RAMCacheItem> free_list_;
-
-  // Allow up to this many materialized pages in the queue.
-  uint64_t max_cache_size_;
+  // Number of logical flash pages in this cache.
+  uint64_t number_flash_pages_;
 
   uint64_t hits_count_;
 
-  uint64_t miss_count_;
+  // How many pages have overflowed from this layer.
+  uint64_t overflow_pages_;
 };
 
-#endif  // PAGE_CACHE_H_
+#endif  // FLASH_CACHE_H_
