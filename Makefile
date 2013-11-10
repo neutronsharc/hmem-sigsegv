@@ -8,10 +8,11 @@ LDFLAGS = -lpthread -pthread -lrt
 
 exes = newhmem
 tests = vaddr_range_test hash_table_test free_list_test lru_list_test bitmap_test \
-	page_allocation_table_test
+	page_allocation_table_test page_stats_table_test
 
 objs = hybrid_memory.o page_cache.o avl.o vaddr_range.o sigsegv_handler.o \
-	utils.o hash.o ram_cache.o hybrid_memory_lib.o page_allocation_table.o
+	utils.o hash.o ram_cache.o hybrid_memory_lib.o page_allocation_table.o \
+	page_stats_table.o
 
 all : ${exes} ${tests}
 
@@ -34,6 +35,9 @@ bitmap_test : bitmap_test.o bitmap.h
 	${CC} ${INC} $^ -o $@ ${LDFLAGS}
 
 page_allocation_table_test : page_allocation_table_test.o page_allocation_table.o
+	${CC} ${INC} $^ -o $@ ${LDFLAGS}
+
+page_stats_table_test : page_stats_table_test.o page_stats_table.o
 	${CC} ${INC} $^ -o $@ ${LDFLAGS}
 
 %.o: %.cc *.h

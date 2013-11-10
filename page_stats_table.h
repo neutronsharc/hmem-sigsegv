@@ -12,14 +12,14 @@
 #include "bitmap.h"
 
 // a PTE node includes 2^12 pages.
-#define PTE_BITS (12)
+#define PTE_BITS (4)
 
 // This struct represent a PGD/PMD/PTE node in the PST tabe.
 template <typename T>
 class PageStatsTableNode {
  public:
   PageStatsTableNode()
-      : entries_(NULL), number_entries_(0), max_entry_value_(0) {}
+      : entries_(NULL), number_entries_(0), entry_value_limit_(0) {}
 
   ~PageStatsTableNode() {}
 
@@ -28,17 +28,17 @@ class PageStatsTableNode {
   bool Init(T* entries, uint64_t number_entries) {
     entries_ = entries;
     number_entries_ = number_entries;
-    max_entry_value_ = (1ULL << sizeof(T) * 8) - 1;
+    entry_value_limit_ = (1ULL << sizeof(T) * 8) - 1;
   }
 
   // Increate the value at entry at "index".
   void Increase(uint64_t index, T delta) {
     assert(index < number_entries_);
-    assert(delta < max_entry_value);
-    while (((uint64_t)entries_[index] + delta > max_entry_value)) {
+    assert(delta < entry_value_limit_);
+    while (((uint64_t)entries_[index] + delta > entry_value_limit_)) {
       ShiftRight(1);
     }
-    entries_[index] += delte;
+    entries_[index] += delta;
   }
 
   // Decrease the value at entry at "index".
@@ -47,7 +47,7 @@ class PageStatsTableNode {
     // It's possible entries[index] < delta because of
     // ShiftRight() ops caused by inc at other entries.
     if (entries_[index] > delta) {
-      entries_[index] -= delte;
+      entries_[index] -= delta;
     } else {
       entries_[index] = 0;
     }
@@ -56,6 +56,7 @@ class PageStatsTableNode {
   // Assign the given value to the "index" entry.
   void Set(uint64_t index, T value) {
     assert(index < number_entries_);
+    assert(value <= entry_value_limit_);
     entries_[index] = value;
   }
 
@@ -63,37 +64,58 @@ class PageStatsTableNode {
   // by given bits to prevent overflow.
   void ShiftRight(uint32_t bits) {
     for (uint64_t i = 0; i < number_entries_; ++i) {
-      entries_[index] >>= 1;
+      entries_[i] >>= 1;
     }
   }
 
-  // Return the index of the entry of max value.
+  // Return the index of the entry of min value.
+  // The index is relative offset of the entry in this node.
   uint64_t GetMinEntryIndex() {
-    uint64_t max_index = 0;
-    T max_value = 0;
-    for (uint64_t i = 1; i < number_entries_; ++i) {
-      if (entries_[i] > max_value) {
-        max_index = i;
-        max_value = entries_[i];
+    uint64_t min_index = 0;
+    T min_value = (T)entry_value_limit_;
+    for (uint64_t i = 0; i < number_entries_; ++i) {
+      if (entries_[i] < min_value) {
+        min_value = entries_[i];
+        min_index = i;
       }
     }
-    return max_index;
+    return min_index;
+  }
+
+  T GetValue(uint64_t index) {
+    assert(index < number_entries_);
+    return entries_[index];
   }
 
   // Display stats.
   void ShowStats() {
+    printf("%ld entries, max-value=%ld\n", number_entries_, entry_value_limit_);
+    for (uint64_t i = 0; i < number_entries_; ++i) {
+      printf("%ld ", (uint64_t)entries_[i]);
+    }
+    printf("\n");
+  }
 
+  uint64_t EntryValueLimit() { return entry_value_limit_;}
+
+  void AssignChildNodes(PageStatsTableNode* child_nodes) {
+    child_nodes_ = child_nodes;
   }
 
  protected:
   // Each entry records number of free pages at a child node.
   T* entries_;
 
+  // Pointers to child nodes.
+  // This field isn't used by PTE nodes because it's children
+  // are represented by "entries_" array.
+  PageStatsTableNode* child_nodes_;
+
   // Size of "entries_" array.
   uint64_t number_entries_;
 
   // An entry value cannot exceed this limit.
-  uint64_t max_entry_value_;
+  uint64_t entry_value_limit_;
 };
 
 
@@ -121,7 +143,7 @@ class PageStatsTableNode {
 // This class is NOT thread safe.
 class PageStatsTable {
  public:
-  PageStatsTable() : ready_(false), pgd_pmd_entries_(NULL), ptes_(NULL) {}
+  PageStatsTable() : ready_(false), pgd_pmd_entries_(NULL), pte_entries_(NULL) {}
 
   virtual ~PageStatsTable() { Release(); }
 
@@ -133,13 +155,41 @@ class PageStatsTable {
   void Release();
 
   // Increate the access count of the given page by "delta" value.
-  void Increase(uint64_t page_number, uint32_t delta);
+  void IncreaseAccessCount(uint64_t page_number, uint32_t delta);
+
+  // Find the access count at the given page.
+  uint64_t AccessCount(uint64_t page_number);
+
+  // Get the access count at the parent PMD entry that encloses
+  // the page.
+  uint64_t PMDAccessCount(uint64_t page_number);
+
+  // Get the access count at the grand-parent PGD entry that encloses
+  // the page.
+  uint64_t PGDAccessCount(uint64_t page_number);
 
   void ShowStats();
+
+  // Search the stats table to get a list of page number whose
+  // access counts are the smallest. These page numbers
+  // are stored in "pages" array.
+  // Caller owns the pointer.
+  uint64_t FindPagesWithMinCount(uint32_t pages_wanted,
+                                 std::vector<uint64_t>* pages);
 
   // Exam the PGD / PMD / PET in the PST table to see if its
   // internal structs satisfy the conditions of a well-formed PST.
   bool SanityCheck();
+
+  uint8_t* GetPTEEntries() { return pte_entries_; }
+
+  uint16_t* GetPGDPMDEntries() { return pgd_pmd_entries_; }
+
+  // Pre-allocated contiguous memory for PGD and PMD nodes' internal entries.
+  uint16_t* pgd_pmd_entries_;
+
+  // Level 3: array of pte entries, one byte per page.
+  uint8_t* pte_entries_;
 
  protected:
   // Indicate if this class has been initialized.
@@ -159,21 +209,15 @@ class PageStatsTable {
   PageStatsTableNode<uint16_t> pgd_;
 
   // Level 2: array of nodes at PMD level.
-  std::vector<PageStatsTableNode<uint16_t>> pmds_;
+  std::vector<PageStatsTableNode<uint16_t> > pmds_;
   uint64_t number_pmd_nodes_;
-
-  // Pre-allocated contiguous memory for PGD and PMD nodes' internal entries.
-  uint16_t* pgd_pmd_entries_;
 
   // Size of "pgd_pmd_entries_" array, == number_pmd_nodes_ + number_pte_nodes_.
   uint64_t number_pgd_pmd_entries_;
 
   // Level 3: array of nodes as children in PAT tree.
-  std::vector<PageStatsTableNode<uint8_t>> ptes_;
+  std::vector<PageStatsTableNode<uint8_t> > ptes_;
   uint64_t number_pte_nodes_;
-
-  // Level 3: array of pte entries, one byte per page.
-  uint8_t* pte_entries_;
 
   // Total number of pages, also size of "ptes_" array.
   uint64_t total_pages_;
