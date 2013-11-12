@@ -11,13 +11,13 @@ static void Test2() {
 
   memset(&v2hmap, 0, sizeof(v2hmap));
   assert(v2hmap.hmem_id == 0);
-  assert(v2hmap.ssd_page_offset == 0);
+  assert(v2hmap.flash_page_offset == 0);
 
   v2hmap.hmem_id = 32;
-  v2hmap.ssd_page_offset = 165;
+  v2hmap.flash_page_offset = 165;
 
   assert(v2hmap.hmem_id == 32);
-  assert(v2hmap.ssd_page_offset == 165);
+  assert(v2hmap.flash_page_offset == 165);
 
   printf("Test succeeded.\n");
 }
@@ -40,7 +40,7 @@ static void TestVaddrRange() {
          vaddr_group.GetTotalVAddressRangeNumber() - total_ranges);
 
   for (uint32_t i = 0; i < total_ranges; ++i) {
-    uint8_t *p = vranges[i]->GetAddress() + 0x1234;
+    uint8_t *p = vranges[i]->address() + 0x1234;
     VAddressRange *vaddr_range  = vaddr_group.FindVAddressRange(p);
     assert(vaddr_range == vranges[i]);
     vaddr_group.ReleaseVAddressRange(vranges[i]);
@@ -58,7 +58,7 @@ static void TestVaddrRange() {
          vaddr_group.GetTotalVAddressRangeNumber() - total_ranges);
 
   for (uint32_t i = 0; i < total_ranges; ++i) {
-    uint8_t *p = vranges[i]->GetAddress() + 0x1234;
+    uint8_t *p = vranges[i]->address() + 0x1234;
     VAddressRange *vaddr_range  = vaddr_group.FindVAddressRange(p);
     assert(vaddr_range == vranges[i]);
     vaddr_group.ReleaseVAddressRange(vranges[i]);

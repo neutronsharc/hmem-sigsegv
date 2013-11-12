@@ -12,7 +12,7 @@ tests = vaddr_range_test hash_table_test free_list_test lru_list_test bitmap_tes
 
 objs = hybrid_memory.o page_cache.o avl.o vaddr_range.o sigsegv_handler.o \
 	utils.o hash.o ram_cache.o hybrid_memory_lib.o page_allocation_table.o \
-	page_stats_table.o
+	page_stats_table.o flash_cache.o
 
 all : ${exes} ${tests}
 
@@ -47,4 +47,4 @@ page_stats_table_test : page_stats_table_test.o page_stats_table.o
 	$(CC) ${CFLAGS} -c $< -o $@
 
 clean :
-	rm -f *.o ${exes} ${objs} ${tests} *.gch a.out
+	rm -f *.o ${exes} ${objs} ${tests} *.gch a.out *.swp

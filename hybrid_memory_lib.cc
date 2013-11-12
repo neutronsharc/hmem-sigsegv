@@ -9,6 +9,7 @@
 
 #include "debug.h"
 #include "hybrid_memory.h"
+#include "hybrid_memory_lib.h"
 #include "sigsegv_handler.h"
 #include "vaddr_range.h"
 
@@ -21,6 +22,10 @@ static SigSegvHandler sigsegv_handler;
 static void SigSegvAction(int sig, siginfo_t* sig_info, void* ucontext);
 
 static uint64_t number_page_faults;
+
+static uint64_t hit_flash_cache = 0;
+
+static uint64_t hit_ram_cache = 0;
 
 // How many pages were not found in hybrid-memory.
 static uint64_t unfound_pages;
@@ -68,16 +73,39 @@ void ReleaseHybridMemory() {
 void *hmem_alloc(uint64_t size) {
   VAddressRange *vaddr_range = vaddr_range_group.AllocateVAddressRange(size);
   assert(vaddr_range != NULL);
-  return vaddr_range->GetAddress();
+  return vaddr_range->address();
 }
 
-void hmem_free(void *address) {
-  VAddressRange *vaddr_range = vaddr_range_group.FindVAddressRange((uint8_t*)address);
+void hmem_free(void* address) {
+  VAddressRange* vaddr_range =
+      vaddr_range_group.FindVAddressRange((uint8_t*)address);
   if (vaddr_range == NULL) {
     err("Address %p not exist in vaddr-range-group.\n", address);
     return;
   }
   vaddr_range_group.ReleaseVAddressRange(vaddr_range);
+}
+
+uint64_t GetPageOffsetInVAddressRange(uint32_t vaddress_range_id, void* page) {
+  return vaddr_range_group.VAddressRangeFromId(vaddress_range_id)
+      ->GetPageOffset(page);
+}
+
+V2HMapMetadata* GetV2HMap(uint32_t vaddress_range_id, uint64_t page_offset) {
+  return vaddr_range_group.VAddressRangeFromId(vaddress_range_id)
+      ->GetV2HMapMetadata(page_offset << PAGE_BITS);
+}
+
+void HybridMemoryStats() {
+   printf("\n=================");
+   printf(
+       "hybrid-memory: hit-ram-cache=%ld, hit-flash-cache=%ld, found-pages = "
+       "%ld, unfound-pages=%ld",
+       hit_ram_cache,
+       hit_flash_cache,
+       found_pages,
+       unfound_pages);
+   hmem_group.GetHybridMemoryFromInstanceId(0)->GetFlashCache()->ShowStats();
 }
 
 // Search hybrid-memory's internal cache layers to find
@@ -90,9 +118,6 @@ static bool LoadDataFromHybridMemory(void* fault_page,
     // The virt-address has a corresponding copy in RAM cache.
     // TODO: find the target data from caching layer, copy target
     // data into this page.
-    //  If v2h metadata shows the virt-addr is in ram-cache, search
-    //    ram cache, copy to virt-addr; mark exist in page-cache; return;
-    //    has a copy in ram-buffer,
     RAMCacheItem* ram_cache_item = hmem->GetRAMCache()->GetItem(fault_page);
     if (!ram_cache_item) {
       err("v2hmap shows address %p exists in ram-cache, but cannot find.\n",
@@ -100,12 +125,27 @@ static bool LoadDataFromHybridMemory(void* fault_page,
       _exit(0);
     }
     memcpy(fault_page, ram_cache_item->data, PAGE_SIZE);
+    ++hit_ram_cache;
     return true;
-  } else if (v2hmap->exist_ssd_cache) {
+  } else if (v2hmap->exist_flash_cache) {
     // TODO: direct-IO into fault_page from flash.
     //  If v2h shows the virt-addr is in flash-cache,  v2h also records
-    //    in-flash offset,  load from flash and copy to virt-addr; mark exist
-    //    in page-cache; return;
+    //  in-flash offset,  load from flash and copy to virt-addr; mark exist
+    //  in page-cache; return;
+    if (hmem->GetFlashCache()->LoadPage(
+            fault_page,
+            PAGE_SIZE,
+            v2hmap->flash_page_offset,
+            vaddr_range->vaddress_range_id(),
+            (((uint64_t)fault_page - (uint64_t)vaddr_range->address()) >>
+             PAGE_BITS)) == false) {
+      err("v2hmap shows address %p exists in flash-cache, but cannot read "
+          "it.\n",
+          fault_page);
+      _exit(0);
+    }
+    ++hit_flash_cache;
+    return true;
   } else if (v2hmap->exist_hdd_file) {
     // TODO: direct-IO into fault_page from hdd.
     // If v2h shows it exists in hdd-file, the offset in vaddr-range
@@ -158,19 +198,20 @@ static void SigSegvAction(int sig, siginfo_t* sig_info, void* ucontext) {
     kill(getpid(), SIGSEGV);
     return;
   }
+  // Find the instance of hmem to which this virtual-page is associated.
   HybridMemory* hmem =
-      hmem_group.GetHybridMemory(fault_address - vaddr_range->GetAddress());
+      hmem_group.GetHybridMemory(fault_address - vaddr_range->address());
   hmem->Lock();
   // 1. using page-offset (fault_page - vaddr_range_start) >> 12 to get
   //    index to virt-to-hybrid table to get metadata;
   V2HMapMetadata* v2hmap =
-      vaddr_range->GetV2HMapMetadata(fault_address - vaddr_range->GetAddress());
+      vaddr_range->GetV2HMapMetadata(fault_address - vaddr_range->address());
   // 2. If v2h metadata shows the virt-address is in page-cache,
   //    this means another thread has faulted on this page before and populated
   //    this page. Nothing to do. return.
   if (v2hmap->exist_page_cache) {
-    //err("Potential race-condition:: virt-address %p already in page cache\n",
-    //    fault_address);
+    err("Potential race-condition:: virt-address %p already in page cache\n",
+        fault_address);
     hmem->Unlock();
     return;
   }
@@ -190,7 +231,8 @@ static void SigSegvAction(int sig, siginfo_t* sig_info, void* ucontext) {
   // There is nothing we can do to guard against this race.
   // It's the user's responsibility to enforce a higher level lock
   // to prevent race-access in a page.
-  if (LoadDataFromHybridMemory(fault_page, vaddr_range, hmem, v2hmap) != true) {
+  if (LoadDataFromHybridMemory(fault_page, vaddr_range, hmem, v2hmap) ==
+      false) {
     //err("The fault-page %p not exist in any layer...\n", fault_page);
     // This is a first-access to a virt-page that doesn't exist in file.
     // Fall through.
@@ -212,8 +254,11 @@ static void SigSegvAction(int sig, siginfo_t* sig_info, void* ucontext) {
   // to "page-cache", a list of materialized pages.
   // If this list exceeds limits, it will overflow to the next cache layer.
   bool is_dirty = rwerror ? true : false;
-  hmem->GetPageCache()->AddPage(
-      fault_page, prot_size, vaddr_range->vaddr_range_id_, v2hmap, is_dirty);
+  hmem->GetPageCache()->AddPage(fault_page,
+                                prot_size,
+                                is_dirty,
+                                v2hmap,
+                                vaddr_range->vaddress_range_id());
   hmem->Unlock();
   return;
 }

@@ -12,6 +12,7 @@
 #include "hybrid_memory_const.h"
 #include "page_cache.h"
 #include "ram_cache.h"
+#include "flash_cache.h"
 #include "sigsegv_handler.h"
 
 class PageCache;
@@ -39,11 +40,13 @@ class HybridMemory {
 
   void Unlock();
 
-  uint32_t GetInstanceId() const { return hmem_instance_id_; }
+  uint32_t instance_id() const { return hmem_instance_id_; }
 
   PageCache* GetPageCache() { return &page_cache_; }
 
   RAMCache* GetRAMCache() { return &ram_cache_; }
+
+  FlashCache* GetFlashCache() { return &flash_cache_; }
 
  protected:
   // Indicate if this hmem is ready.
@@ -64,6 +67,9 @@ class HybridMemory {
 
   // L2 cache.
   RAMCache ram_cache_;
+
+  // L3 cache.
+  FlashCache flash_cache_;
 };
 
 // One process can create only one HybridMemoryGroup, because all threads in
@@ -82,10 +88,14 @@ class HybridMemoryGroup {
 
   bool Release();
 
-  // Given a offset-address (offset of the virtual-address from beginning
+  // Given a offset-address (offset of the virtual-page from beginning
   // of vaddr-range), find what hmem-instance is responsible
   // to cache this address.
   HybridMemory* GetHybridMemory(uint64_t offset_address);
+
+  HybridMemory* GetHybridMemoryFromInstanceId(uint32_t hmem_id) {
+    return &hmem_instances_[hmem_id];
+  }
 
  protected:
   // Als SSD files of this hmem-group are stored in this dir.

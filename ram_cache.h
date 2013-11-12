@@ -24,10 +24,14 @@ struct RAMCacheItem {
   // Fields for hash-table.
   // This is the virt-address that this ram-cache-data is associated to.
   void *hash_key;
+
   RAMCacheItem* hash_next;
 
   // Back pointer to the V2H metadata.
   V2HMapMetadata* v2hmap;
+
+  // Enclosing vaddress-range-id of this virtual-page.
+  uint16_t vaddress_range_id;
 
   // Real memory where data of the virt-page is cached.
   // This memory should be pinned, and page-aligned to
@@ -69,12 +73,13 @@ class RAMCache {
   // Cache the given page.
   // "page" is the virt-address that has been materialized and contains
   // "obj_size" of data.
-  // "is_dirty" indicates if this cached copy contains update that hasn't
-  // made to the original location in backing storage (usually hdd file).
+  // "is_dirty" indicates if this cached copy from upper-level contains update
+  // that hasn't made to the current layer of caching.
   bool AddPage(void* page,
                uint64_t data_size,
+               bool is_dirty,
                V2HMapMetadata* v2hmap,
-               bool is_dirty);
+               uint32_t vaddress_range_id);
 
   // Evict objects and demote them to the next lower caching layer.
   // Return the number of objs that have been evicted.

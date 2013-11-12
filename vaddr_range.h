@@ -18,18 +18,21 @@
 struct V2HMapMetadata {
   uint32_t exist_page_cache : 1;
   uint32_t exist_ram_cache : 1;
-  uint32_t exist_ssd_cache : 1;
+  uint32_t exist_flash_cache : 1;
   uint32_t exist_hdd_file : 1;
   uint32_t dirty_page_cache : 1;
   uint32_t dirty_ram_cache : 1;
-  uint32_t dirty_ssd_cache : 1;
+  uint32_t dirty_flash_cache : 1;
   uint32_t reserved : 1;
 
+  // TODO: there is no need to store a hmem_id for a virtual-page.
+  // We can compute the hmem_id a virtual-page belongs to by round-robin
+  // its page number.
   uint32_t hmem_id : 8;
 
   // If the virt-page has a copy in ssd, this is the page-offset
   // inside the flash-cache in the hmem identified by "hmem_id".
-  uint32_t ssd_page_offset : 24;
+  uint32_t flash_page_offset : 24;
 } __attribute__((__packed__));
 
 // This class represents a virtual address range.
@@ -52,20 +55,30 @@ class VAddressRange {
 
   AVLNode *GetTreeNode() { return &avl_node_; }
 
-  uint8_t *GetAddress() { return address_; }
+  uint8_t *address() const { return address_; }
 
-  // id of this vaddr_range.
-  uint32_t vaddr_range_id_;
+  uint32_t vaddress_range_id() const { return vaddress_range_id_; }
+
+  void set_vaddress_range_id(uint32_t vaddress_range_id) {
+    vaddress_range_id_ = vaddress_range_id;
+  }
 
   // Find the v2hmap entry for an address within this vaddr-range
-  // with offset = "address_offset".
+  // with byte-offset = "address_offset".
   V2HMapMetadata* GetV2HMapMetadata(uint64_t address_offset);
 
+  uint64_t GetPageOffset(void* page) {
+    return ((uint64_t)page - (uint64_t)address_) >> PAGE_BITS;
+  }
+
  protected:
+  // id of this vaddr_range.
+  uint32_t vaddress_range_id_;
+
   // If true, this vaddr-range has been allocated and is being used.
   bool is_active_;
 
-  // Stating address of this range.
+  // Stating address of this range. Page-aligned.
   uint8_t *address_;
 
   // Total byte-size of this vaddr_range.
@@ -89,7 +102,7 @@ class VAddressRange {
   // An array of metadata record, one entry per virt-page.
   V2HMapMetadata *v2h_map_;
 
-  // Byte-size of the v2hmap array.
+  // Number of entries in the above array.
   uint64_t v2h_map_size_;
 };
 
@@ -112,6 +125,18 @@ class VAddressRangeGroup {
   uint32_t GetFreeVAddressRangeNumber() { return free_vaddr_ranges_; }
 
   VAddressRange *FindVAddressRange(uint8_t *address);
+
+  uint64_t GetPageOffsetInVaddressRange(uint32_t vaddress_range_id,
+                                        void* page) {
+    return ((uint64_t)page -
+            (uint64_t)(vaddr_range_list_[vaddress_range_id].address())) >>
+           PAGE_BITS;
+  }
+
+  VAddressRange* VAddressRangeFromId(uint32_t vaddress_range_id) {
+    assert(vaddress_range_id < total_vaddr_ranges_);
+    return &vaddr_range_list_[vaddress_range_id];
+  }
 
  protected:
   uint32_t FindSetBit();

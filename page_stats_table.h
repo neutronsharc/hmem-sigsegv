@@ -12,7 +12,7 @@
 #include "bitmap.h"
 
 // a PTE node includes 2^12 pages.
-#define PTE_BITS (4)
+#define PTE_BITS (12)
 
 // This struct represent a PGD/PMD/PTE node in the PST tabe.
 template <typename T>

@@ -98,6 +98,10 @@ class PageAllocationTable {
   // internal structs satisfy the conditions of a well-formed PAT.
   bool SanityCheck();
 
+  uint64_t used_pages() const { return used_pages_; }
+
+  uint64_t free_pages() const { return free_pages_; }
+
  protected:
   // Indicate if this class has been initialized.
   bool ready_;

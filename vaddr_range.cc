@@ -90,7 +90,7 @@ bool VAddressRangeGroup::Init() {
   vaddr_range_list_ = new VAddressRange[num_vaddr_ranges];
   assert(vaddr_range_list_ != NULL);
   for (uint32_t i = 0; i < num_vaddr_ranges; ++i) {
-    vaddr_range_list_[i].vaddr_range_id_ = i;
+    vaddr_range_list_[i].set_vaddress_range_id(i);
   }
   total_vaddr_ranges_ = num_vaddr_ranges;
   free_vaddr_ranges_ = num_vaddr_ranges;
@@ -129,7 +129,7 @@ VAddressRange* VAddressRangeGroup::AllocateVAddressRange(uint64_t size) {
 }
 
 bool VAddressRangeGroup::ReleaseVAddressRange(VAddressRange* vaddr_range) {
-  AVLNode* node = FindNode(&tree_, (uint64_t)vaddr_range->GetAddress());
+  AVLNode* node = FindNode(&tree_, (uint64_t)vaddr_range->address());
   if (node == NULL) {
     err("Failed to find the vrange.\n");
     return false;
@@ -141,7 +141,7 @@ bool VAddressRangeGroup::ReleaseVAddressRange(VAddressRange* vaddr_range) {
   // Remove the node representing this vaddr-range from BST.
   DeleteNode(&tree_, vaddr_range->GetTreeNode());
 
-  vaddr_range_bitmap_[vaddr_range->vaddr_range_id_] = 1;
+  vaddr_range_bitmap_[vaddr_range->vaddress_range_id()] = 1;
   ++free_vaddr_ranges_;
   --inuse_vaddr_ranges_;
 

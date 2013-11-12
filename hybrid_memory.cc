@@ -14,13 +14,12 @@
 #include "sigsegv_handler.h"
 #include "vaddr_range.h"
 
-bool HybridMemory::Init(const std::string &ssd_filename,
+bool HybridMemory::Init(const std::string &ssd_dirpath,
                         uint64_t page_buffer_size,
                         uint64_t ram_buffer_size,
                         uint64_t ssd_buffer_size,
                         uint32_t hmem_intance_id) {
   assert(ready_ == false);
-  ssd_filename_ = ssd_filename;
   page_buffer_size_ = page_buffer_size;
   ram_buffer_size_ = ram_buffer_size;
   ssd_buffer_size_ = ssd_buffer_size;
@@ -32,9 +31,12 @@ bool HybridMemory::Init(const std::string &ssd_filename,
   char name[64];
   sprintf(name, "hmem-%d", hmem_intance_id);
   std::string strname = name;
+  std::string flash_filename = ssd_dirpath + "flashcache-" + strname;
   assert(page_cache_.Init(this, strname + "-pagecache", page_buffer_size) ==
          true);
   assert(ram_cache_.Init(this, strname + "-ramcache", ram_buffer_size) == true);
+  assert(flash_cache_.Init(
+      this, strname + "-flashcache", flash_filename, ssd_buffer_size) == true);
   ready_ = true;
   return ready_;
 }
@@ -44,6 +46,7 @@ bool HybridMemory::Release() {
   if (ready_) {
     page_cache_.Release();
     ram_cache_.Release();
+    flash_cache_.Release();
     ready_ = false;
   }
   return true;

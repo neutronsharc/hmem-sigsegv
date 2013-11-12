@@ -58,6 +58,8 @@ RAMCacheItem* RAMCache::GetItem(void* virtual_address) {
   if (item) {
     assert(item->hash_key == virtual_address);
   }
+  // This item gets an recent access. Move it to front of LRU list.
+  lru_list_.Update(item);
   return item;
 }
 
@@ -78,15 +80,22 @@ uint32_t RAMCache::EvictItems() {
   }
   for (uint32_t i = 0; i < items_found; ++i) {
     item = items[i];
-    // TODO: move these objs to the next lower cache layer.
-    // hybrid_memory_->GetFlashCache()->AddPage(item);
-
+    V2HMapMetadata* v2hmap = item->v2hmap;
+    if (!v2hmap->exist_flash_cache || v2hmap->dirty_ram_cache) {
+      // Move these objs to the next lower cache layer.
+      hybrid_memory_->GetFlashCache()->AddPage(item->data,
+                                               PAGE_SIZE,
+                                               v2hmap->dirty_ram_cache,
+                                               v2hmap,
+                                               item->vaddress_range_id,
+                                               item->hash_key);
+    }
     lru_list_.Unlink(item);
     hash_table_.Remove(item->hash_key, sizeof(void*));
 
-    item->v2hmap->exist_ram_cache = 0;
-    item->v2hmap->dirty_ram_cache = 0;
-    item->v2hmap = 0;
+    v2hmap->exist_ram_cache = 0;
+    v2hmap->dirty_ram_cache = 0;
+    item->v2hmap = NULL;
     item->hash_key = NULL;
     free_list_.Free(item);
   }
@@ -95,7 +104,9 @@ uint32_t RAMCache::EvictItems() {
 
 bool RAMCache::AddPage(void* page,
                        uint64_t obj_size,
-                       V2HMapMetadata* v2hmap) {
+                       bool is_dirty,
+                       V2HMapMetadata* v2hmap,
+                       uint32_t vaddress_range_id) {
   assert(((uint64_t)page & (PAGE_SIZE - 1)) == 0);
   assert(obj_size <= PAGE_SIZE);
 
@@ -105,12 +116,11 @@ bool RAMCache::AddPage(void* page,
     assert(item->hash_key == page);
     assert(v2hmap->exist_ram_cache == 1);
     // The virt-page already has a cached copy in current layer.
-    if (v2hmap->dirty_page_cache) {
+    if (is_dirty) {
       memcpy(item->data, page, obj_size);
       item->v2hmap->dirty_ram_cache = 1;
     }
     lru_list_.Update(item);
-    item->v2hmap->exist_ram_cache = 1;
   } else {
     // The virt-page hasn't been cahched in this layer.
     item = free_list_.New();
@@ -125,13 +135,15 @@ bool RAMCache::AddPage(void* page,
     assert(item != NULL);
     memcpy(item->data, page, obj_size);
     item->hash_key = page;
+    item->vaddress_range_id = vaddress_range_id;
     item->v2hmap = v2hmap;
+    item->v2hmap->exist_ram_cache = 1;
+    item->v2hmap->dirty_ram_cache = is_dirty;
+
     // Insert the newly cached obj to hash-table.
     hash_table_.Insert(item, sizeof(void*));
     // Link it to LRU list.
     lru_list_.Link(item);
-    item->v2hmap->exist_ram_cache = 1;
-    item->v2hmap->dirty_ram_cache = v2hmap->dirty_page_cache;
   }
   return true;
 }

@@ -85,7 +85,7 @@ bool PageStatsTable::Init(const std::string& name, uint64_t total_pages) {
 
   name_ = name;
   ready_ = true;
-  dbg("PST table %s: %ld pages, pgd_bits=%d, pmd_bits=%d, pte_bits=%d,",
+  dbg("PST table %s: %ld pages, pgd_bits=%d, pmd_bits=%d, pte_bits=%d\n",
       name_.c_str(), total_pages_, pgd_bits_, pmd_bits_, pte_bits_);
   return ready_;
 }

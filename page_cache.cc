@@ -41,47 +41,56 @@ bool PageCache::Release() {
   return true;
 }
 
+uint32_t PageCache::EvictItems() {
+  // Try to free up this many cached pages.
+  uint32_t to_release = 10;
+  uint32_t released = 0;
+  for (released = 0; queue_.size() > 0 && released < to_release; ++released) {
+    PageCacheItem* olditem = (PageCacheItem*)queue_.front();
+    queue_.pop();
+    assert(olditem != NULL);
+    // TODO:
+    // If the olditem contains dirty data, should flush this data to next
+    // layer of cache.
+    // There is a race-condition here:
+    // Thread 1 unproected page1 and is in the middle of writing to it.
+    // Thread 2 triggers a sigsegv and decides to release page1. Thread2 will
+    // copy page1 to next cache layer since page1 has "dirty" flag set.
+    // As a result, an incomplete copy of page1 is moved to next cache layer
+    // while thread 1 is still writing to this page.
+    //
+    // The only thing we can do at sig handler to defend this race is to
+    // read-protect the page before copying, so thread1 will see a sigsegv
+    // when writing to it and fall back sig handler to load it from
+    // the lower cache layer.
+    //   if olditem->dirty {
+    //     mprotect(olditem, READ);
+    //     copy olditem to next layer of cache;
+    //   }
+    //   mprotect(olditem, NONE);
+    //   madvise(olditem, dontneed);
+    hybrid_memory_->GetRAMCache()->AddPage(olditem->page,
+                                           olditem->size,
+                                           olditem->v2hmap->dirty_page_cache,
+                                           olditem->v2hmap,
+                                           olditem->vaddr_range_id);
+    olditem->v2hmap->exist_page_cache = 0;
+    olditem->v2hmap->dirty_page_cache = 0;
+    assert(madvise(olditem->page, olditem->size, MADV_DONTNEED) == 0);
+    assert(mprotect(olditem->page, olditem->size, PROT_NONE) == 0);
+    item_list_.Free(olditem);
+  }
+  return released;
+}
+
 bool PageCache::AddPage(void* page,
                         uint32_t size,
-                        uint32_t vaddr_range_id,
+                        bool is_dirty,
                         V2HMapMetadata* v2hmap,
-                        bool is_dirty) {
+                        uint32_t vaddr_range_id) {
   PageCacheItem* item = item_list_.New();
-  // Try to free up this many cached pages.
-  uint32_t release_items = 10;
   if (item == NULL) {
-    for (uint32_t i = 0; queue_.size() > 0 && i < release_items; ++i) {
-      PageCacheItem* olditem = (PageCacheItem*)queue_.front();
-      queue_.pop();
-      assert(olditem != NULL);
-      // TODO:
-      // If the olditem contains dirty data, should flush this data to next
-      // layer of cache.
-      // There is a race-condition here:
-      // Thread 1 unproected page1 and is in the middle of writing to it.
-      // Thread 2 triggers a sigsegv and decides to release page1. Thread2 will
-      // copy page1 to next cache layer since page1 has "dirty" flag set.
-      // As a result, an incomplete copy of page1 is moved to next cache layer
-      // while thread 1 is still writing to this page.
-      //
-      // The only thing we can do at sig handler to defend this race is to
-      // read-protect the page before copying, so thread1 will see a sigsegv
-      // when writing to it and fall back sig handler to load it from
-      // the lower cache layer.
-      //   if olditem->dirty {
-      //     mprotect(olditem, READ);
-      //     copy olditem to next layer of cache;
-      //   }
-      //   mprotect(olditem, NONE);
-      //   madvise(olditem, dontneed);
-      hybrid_memory_->GetRAMCache()->AddPage(
-          olditem->page, olditem->size, olditem->v2hmap);
-      olditem->v2hmap->exist_page_cache = 0;
-      olditem->v2hmap->dirty_page_cache = 0;
-      assert(madvise(olditem->page, olditem->size, MADV_DONTNEED) == 0);
-      assert(mprotect(olditem->page, olditem->size, PROT_NONE) == 0);
-      item_list_.Free(olditem);
-    }
+    assert(EvictItems() > 0);
     item = item_list_.New();
   }
   assert(item != NULL);

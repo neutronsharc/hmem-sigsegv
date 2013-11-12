@@ -47,15 +47,16 @@ class PageCache {
   // Add a new pae to this layer of caching.
   bool AddPage(void* page,
                uint32_t size,
-               uint32_t vaddr_range_id,
+               bool is_dirty,
                V2HMapMetadata* v2hmap,
-               bool is_dirty);
+               uint32_t vaddr_range_id);
+
+  // Evict to the next caching layer beneath this layer.
+  uint32_t EvictItems();
 
   const std::string& name() const { return name_; }
 
  protected:
-  uint32_t OverflowToNextLayer();
-
   bool ready_;
 
   HybridMemory* hybrid_memory_;
