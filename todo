@@ -1,0 +1,9 @@
+
+Features to add:
+
+1. Currently max virtual-space size per hmalloc() is bounded by 36 bits (64GB).
+Should support arbitrarily large allocation (up to 40 bits 1TB).
+
+2. Max active hmalloc() instances is bounded by 8 bits. This means no more than
+256 hmalloc() at any given time. Should relax this restriction.
+
