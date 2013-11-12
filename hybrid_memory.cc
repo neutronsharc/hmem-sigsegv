@@ -101,4 +101,3 @@ HybridMemory* HybridMemoryGroup::GetHybridMemory(uint64_t offset_address) {
   uint32_t hmem_id = offset % number_hmem_instances_;
   return &hmem_instances_[hmem_id];
 }
-

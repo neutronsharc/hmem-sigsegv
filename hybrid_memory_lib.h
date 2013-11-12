@@ -6,6 +6,7 @@
 
 
 struct V2HMapMetadata;
+class VAddressRange;
 
 bool InitHybridMemory(const std::string& ssd_dirpath,
                       const std::string& hmem_group_name,
@@ -29,6 +30,8 @@ uint64_t UnFoundPages();
 uint64_t GetPageOffsetInVAddressRange(uint32_t vaddress_range_id, void* page);
 
 V2HMapMetadata* GetV2HMap(uint32_t vaddress_range_id, uint64_t page_offset);
+
+VAddressRange* GetVAddressRangeFromId(uint32_t vaddress_range_id);
 
 void HybridMemoryStats();
 

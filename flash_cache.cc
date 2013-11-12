@@ -77,8 +77,42 @@ void FlashCache:: Release() {
   }
 }
 
-uint32_t FlashCache::EvictItems() {
-  return 0;
+uint32_t FlashCache::MigrateToHDD(
+    std::vector<uint64_t>& flash_pages_writeto_hdd) {
+  assert(flash_pages_writeto_hdd.size() > 0);
+  // TODO: select the "best" version of the page to write to hdd.
+  // From ram-cache? from flash-cache?
+
+  return flash_pages_writeto_hdd.size();
+}
+
+uint32_t FlashCache::EvictItems(uint32_t pages_to_evict) {
+  std::vector<uint64_t> pages;
+  uint32_t evicted_pages =
+      page_stats_table_.FindPagesWithMinCount(pages_to_evict, &pages);
+  assert(evicted_pages == pages_to_evict);
+
+  // If have backing hdd file, shall write dirty pages to back hdd.
+  std::vector<uint64_t> flash_pages_writeto_hdd;
+  for (uint32_t i = 0; i < evicted_pages; ++i) {
+    // This evicted pages must have be associated to mastering vaddress-range.
+    F2VMapItem* f2vmap = &f2v_map_[pages[i]];
+    assert(f2vmap->vaddress_range_id < INVALID_VADDRESS_RANGE_ID);
+    VAddressRange* vaddress_range =
+        GetVAddressRangeFromId(f2vmap->vaddress_range_id);
+    if (vaddress_range->hdd_file_fd() > 0) {
+      flash_pages_writeto_hdd.push_back(pages[i]);
+    }
+  }
+  if (flash_pages_writeto_hdd.size() > 0) {
+    MigrateToHDD(flash_pages_writeto_hdd);
+  }
+
+  for (uint32_t i = 0; i < evicted_pages; ++i) {
+    page_allocate_table_.FreePage(pages[i]);
+    // TODO: clear the "exist_flash_cache" flag.
+  }
+  return evicted_pages;
 }
 
 bool FlashCache::AddPage(void* page,
@@ -92,7 +126,8 @@ bool FlashCache::AddPage(void* page,
   uint64_t flash_page_number;
   while (page_allocate_table_.AllocateOnePage(&flash_page_number) == false) {
     // TODO: Evict some pages from flash-cache to make space.
-    EvictItems();
+    uint32_t pages_to_evict = 32;
+    EvictItems(pages_to_evict);
     assert(page_allocate_table_.AllocateOnePage(&flash_page_number) == true);
   }
   assert(f2v_map_[flash_page_number].vaddress_range_id ==
@@ -147,6 +182,34 @@ bool FlashCache::LoadPage(void* data,
     return false;
   }
   page_stats_table_.IncreaseAccessCount(flash_page_number, 1);
+  return true;
+}
+
+bool FlashCache::LoadFromHDDFile(VAddressRange* vaddr_range,
+                                 void* page,
+                                 V2HMapMetadata* v2hmap,
+                                 bool read_ahead) {
+  uint64_t hdd_file_offset = (uint64_t)page - (uint64_t)vaddr_range->address() +
+                             vaddr_range->hdd_file_offset();
+  uint64_t read_size = PAGE_SIZE;
+  if (!read_ahead) {
+    if (pread(vaddr_range->hdd_file_fd(), page, read_size, hdd_file_offset) !=
+        read_size) {
+      err("Failed to read hdd-file at flash-cache %s: vaddr-range %d, "
+          "page %p\n",
+          name_.c_str(),
+          vaddr_range->vaddress_range_id(),
+          page);
+      perror("flash-cache read hdd-file failed: ");
+      return false;
+    }
+  } else {
+    read_size = PAGE_SIZE << VADDRESS_CHUNK_BITS;
+    uint64_t virtual_chunk = (uint64_t)page & ~((1ULL << (PAGE_BITS + VADDRESS_CHUNK_BITS)) - 1);
+    hdd_file_offset = virtual_chunk - (uint64_t)vaddr_range->address() +
+                      vaddr_range->hdd_file_offset();
+    // TODO: Read from hdd file, then save these pages to flash.
+  }
   return true;
 }
 

@@ -10,13 +10,13 @@ static void Test2() {
   printf("sizeof v2hmap = %ld\n", sizeof(v2hmap));
 
   memset(&v2hmap, 0, sizeof(v2hmap));
-  assert(v2hmap.hmem_id == 0);
+  //assert(v2hmap.hmem_id == 0);
   assert(v2hmap.flash_page_offset == 0);
 
-  v2hmap.hmem_id = 32;
+  //v2hmap.hmem_id = 32;
   v2hmap.flash_page_offset = 165;
 
-  assert(v2hmap.hmem_id == 32);
+  //assert(v2hmap.hmem_id == 32);
   assert(v2hmap.flash_page_offset == 165);
 
   printf("Test succeeded.\n");

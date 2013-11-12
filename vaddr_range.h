@@ -25,10 +25,10 @@ struct V2HMapMetadata {
   uint32_t dirty_flash_cache : 1;
   uint32_t reserved : 1;
 
-  // TODO: there is no need to store a hmem_id for a virtual-page.
+  // There is no need to store a hmem_id for a virtual-page.
   // We can compute the hmem_id a virtual-page belongs to by round-robin
   // its page number.
-  uint32_t hmem_id : 8;
+  //uint32_t hmem_id : 8;
 
   // If the virt-page has a copy in ssd, this is the page-offset
   // inside the flash-cache in the hmem identified by "hmem_id".
@@ -43,12 +43,27 @@ struct V2HMapMetadata {
 // a vaddr_range given an arbitrary virtual address.
 class VAddressRange {
  public:
-  VAddressRange();
-  virtual ~VAddressRange();
+  VAddressRange()
+      : is_active_(false),
+        has_backing_hdd_file_(false),
+        address_(NULL),
+        size_(0),
+        number_pages_(0),
+        v2h_map_(NULL),
+        v2h_map_size_(0),
+        hdd_file_fd_(-1) {}
+
+  virtual ~VAddressRange() {
+    Release();
+  }
 
   // Activate this vaddr-range by allocating virtual address and
   // initing its internal structs.
   bool Init(uint64_t size);
+
+  // Init a vaddress-range which is mapped to a backing hdd-file
+  // starting at given file offset.
+  bool Init(uint64_t size, std::string& hdd_filename, uint64_t hdd_file_offset);
 
   // Release internal structs.
   void Release();
@@ -67,9 +82,17 @@ class VAddressRange {
   // with byte-offset = "address_offset".
   V2HMapMetadata* GetV2HMapMetadata(uint64_t address_offset);
 
+  // Given a virtual page address, find its page-offset relative to
+  // the beginning of vaddress-range.
   uint64_t GetPageOffset(void* page) {
     return ((uint64_t)page - (uint64_t)address_) >> PAGE_BITS;
   }
+
+  int hdd_file_fd() const { return hdd_file_fd_; }
+
+  uint64_t hdd_file_offset() const { return hdd_file_offset_; }
+
+  bool is_active() const { return is_active_; }
 
  protected:
   // id of this vaddr_range.
@@ -90,10 +113,13 @@ class VAddressRange {
   // A tree-node to link this vaddr-range to a BST.
   AVLNode avl_node_;
 
+  // Indicate if this vaddress-range is backed by a real hdd-file.
+  bool has_backing_hdd_file_;
+
   // The underlying hdd file that backs this vaddr range.
   // Used when doing mmap().
   // vaddr-range has a 1-on-1 mapping to the backing hdd file.
-  std::string hdd_file_name_;
+  std::string hdd_filename_;
 
   // This vaddr-range maps to backing hdd file from this
   // byte-offset onwards and extends to "size_" bytes.
@@ -104,6 +130,10 @@ class VAddressRange {
 
   // Number of entries in the above array.
   uint64_t v2h_map_size_;
+
+  // File handle of the underlying file in HDD.
+  // This file is at least as large as the vaddress-range size.
+  int hdd_file_fd_;
 };
 
 

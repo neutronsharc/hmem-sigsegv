@@ -61,12 +61,26 @@ class FlashCache {
                 uint32_t vaddress_range_id,
                 uint64_t vaddress_page_offset);
 
+  // Load a "page" from the HDD file that backs "vaddr_range".
+  // "page" is the virtual-page in vaddress range, which is also the
+  // offset into HDD file.
+  // "v2hmap" is V2H metadata record for this virtual-page.
+  // If "read_ahead" is true, we will perform read-ahead to load
+  // the surrounding pages to leverage spatial locality.
+  bool LoadFromHDDFile(VAddressRange* vaddr_range,
+                       void* page,
+                       V2HMapMetadata* v2hmap,
+                       bool read_ahead);
+
   // Get the F2V map item for a given flash page.
   F2VMapItem* GetItem(uint64_t page_number) { return &f2v_map_[page_number]; }
 
   // Evict objects and demote them to the next lower caching layer.
   // Return the number of objs that have been evicted.
-  uint32_t EvictItems();
+  uint32_t EvictItems(uint32_t pages_to_evict);
+
+  // Move the group of flash pages to backing HDD files.
+  uint32_t MigrateToHDD(std::vector<uint64_t>& flash_pages_writeto_hdd);
 
   void ShowStats();
 

@@ -23,6 +23,8 @@ static void SigSegvAction(int sig, siginfo_t* sig_info, void* ucontext);
 
 static uint64_t number_page_faults;
 
+static uint64_t hit_hdd_file = 0;
+
 static uint64_t hit_flash_cache = 0;
 
 static uint64_t hit_ram_cache = 0;
@@ -96,6 +98,10 @@ V2HMapMetadata* GetV2HMap(uint32_t vaddress_range_id, uint64_t page_offset) {
       ->GetV2HMapMetadata(page_offset << PAGE_BITS);
 }
 
+VAddressRange* GetVAddressRangeFromId(uint32_t vaddress_range_id) {
+  return vaddr_range_group.VAddressRangeFromId(vaddress_range_id);
+}
+
 void HybridMemoryStats() {
    printf("\n=================");
    printf(
@@ -116,7 +122,7 @@ static bool LoadDataFromHybridMemory(void* fault_page,
                                      V2HMapMetadata* v2hmap) {
   if (v2hmap->exist_ram_cache) {
     // The virt-address has a corresponding copy in RAM cache.
-    // TODO: find the target data from caching layer, copy target
+    // Find the target data from caching layer, copy target
     // data into this page.
     RAMCacheItem* ram_cache_item = hmem->GetRAMCache()->GetItem(fault_page);
     if (!ram_cache_item) {
@@ -128,10 +134,7 @@ static bool LoadDataFromHybridMemory(void* fault_page,
     ++hit_ram_cache;
     return true;
   } else if (v2hmap->exist_flash_cache) {
-    // TODO: direct-IO into fault_page from flash.
-    //  If v2h shows the virt-addr is in flash-cache,  v2h also records
-    //  in-flash offset,  load from flash and copy to virt-addr; mark exist
-    //  in page-cache; return;
+    //  V2h records in-flash offset. Load from flash.
     if (hmem->GetFlashCache()->LoadPage(
             fault_page,
             PAGE_SIZE,
@@ -147,10 +150,19 @@ static bool LoadDataFromHybridMemory(void* fault_page,
     ++hit_flash_cache;
     return true;
   } else if (v2hmap->exist_hdd_file) {
-    // TODO: direct-IO into fault_page from hdd.
     // If v2h shows it exists in hdd-file, the offset in vaddr-range
-    //    is also file-offset. Load from file, mark exist in page-cache;
-    //    return;
+    // is also file-offset. Load from file, mark exist in page-cache.
+    assert(vaddr_range->hdd_file_fd() > 0);
+    bool read_ahead = false;
+    if (hmem->GetFlashCache()->LoadFromHDDFile(
+            vaddr_range, fault_page, v2hmap, read_ahead) == false) {
+      err("v2hmap shows address %p exists in flash-cache, but cannot read "
+          "it.\n",
+          fault_page);
+      _exit(0);
+    }
+    ++hit_hdd_file;
+    return true;
   }
   return false;
 }
