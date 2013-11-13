@@ -115,6 +115,16 @@ class FlashCache {
   // Number of logical flash pages in this cache.
   uint64_t total_flash_pages_;
 
+  // Pre-allocated auxiliary buffer to move data between flash and hdd.
+  // This buffer is page-aligned.
+  uint8_t* aux_buffer_;
+
+  // Byte size of the buffer.
+  uint64_t aux_buffer_size_;
+
+  // Free-list of he aux-buffer pages.
+  std::vector<uint8_t*> aux_buffer_list_;
+
   // How many lookup are hits.
   uint64_t hits_count_;
 

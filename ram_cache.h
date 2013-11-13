@@ -81,6 +81,10 @@ class RAMCache {
                V2HMapMetadata* v2hmap,
                uint32_t vaddress_range_id);
 
+  // Remove the cached object represented by "ram_cache_item", and recycle
+  // the resource it's used.
+  void Remove(RAMCacheItem* ram_cache_item);
+
   // Evict objects and demote them to the next lower caching layer.
   // Return the number of objs that have been evicted.
   uint32_t EvictItems();

@@ -72,7 +72,16 @@ void ReleaseHybridMemory() {
   hmem_group.Release();
 }
 
-void *hmem_alloc(uint64_t size) {
+void* hmem_map(const std::string& hdd_filename,
+               uint64_t size,
+               uint64_t hdd_file_offset) {
+  VAddressRange* vaddr_range = vaddr_range_group.AllocateVAddressRange(
+      size, hdd_filename, hdd_file_offset);
+  assert(vaddr_range != NULL);
+  return vaddr_range->address();
+}
+
+void* hmem_alloc(uint64_t size) {
   VAddressRange *vaddr_range = vaddr_range_group.AllocateVAddressRange(size);
   assert(vaddr_range != NULL);
   return vaddr_range->address();

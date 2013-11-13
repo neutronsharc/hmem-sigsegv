@@ -17,7 +17,13 @@ bool InitHybridMemory(const std::string& ssd_dirpath,
 
 void ReleaseHybridMemory();
 
-void *hmem_alloc(uint64_t size);
+void* hmem_alloc(uint64_t size);
+
+// Map a region of disk file into virtual-memory.
+// The region starts from "file_offset" and covers "size" bytes.
+void* hmem_map(const std::string& hdd_filename,
+               uint64_t size,
+               uint64_t hdd_file_offset);
 
 void hmem_free(void *address);
 

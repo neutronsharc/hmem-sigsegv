@@ -102,6 +102,17 @@ uint32_t RAMCache::EvictItems() {
   return items_found;
 }
 
+void RAMCache::Remove(RAMCacheItem* ram_cache_item) {
+  lru_list_.Unlink(ram_cache_item);
+  hash_table_.Remove(ram_cache_item->hash_key, sizeof(void*));
+  V2HMapMetadata* v2hmap = ram_cache_item->v2hmap;
+  v2hmap->exist_ram_cache = 0;
+  v2hmap->dirty_ram_cache = 0;
+  ram_cache_item->v2hmap = NULL;
+  ram_cache_item->hash_key = NULL;
+  free_list_.Free(ram_cache_item);
+}
+
 bool RAMCache::AddPage(void* page,
                        uint64_t obj_size,
                        bool is_dirty,

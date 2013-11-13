@@ -10,6 +10,8 @@
 #include "hybrid_memory_lib.h"
 #include "hybrid_memory_const.h"
 
+#define USE_MMAP
+
 struct TaskItem {
   uint8_t *buffer;
   uint64_t size;
@@ -45,6 +47,19 @@ static void* AccessHybridMemoryWriteThenRead(void *arg) {
 
   //////////////////////////////////////////
   pthread_mutex_lock(&task->lock);
+  // If we use hdd-file backed mmap(), the init data is all "F".
+#ifdef USE_MMAP
+  for (uint64_t i = 0; i < task->number_access; ++i) {
+    target_page_number = task->begin_page + (i % task->number_pages);
+    uint64_t* p =
+        (uint64_t*)(task->buffer + (target_page_number << PAGE_BITS) + 16);
+    assert(*p == 0xFFFFFFFFFFFFFFFF);
+    if (i && i % 1000 == 0) {
+      printf("use-mmap: prefault: %ld\n", i);
+    }
+  }
+  HybridMemoryStats();
+#endif
   faults_step1 = NumberOfPageFaults();
   // Write round.
   for (uint64_t i = 0; i < task->number_access; ++i) {
@@ -150,13 +165,15 @@ static void* AccessHybridMemory(void *arg) {
   pthread_exit(NULL);
 }
 
+
 static void TestMultithreadAccess() {
   // Prepare hybrid-mem.
   uint64_t one_mega = 1024ULL * 1024;
-  uint32_t num_hmem_instances = 2;
+  uint32_t num_hmem_instances = 1;
   uint64_t page_buffer_size = one_mega * 1;
   uint64_t ram_buffer_size = one_mega * 10;
-  uint64_t ssd_buffer_size = one_mega * 100;
+  uint64_t ssd_buffer_size = one_mega * 50;
+  uint64_t hdd_file_size = one_mega * 100;
   assert(InitHybridMemory("/tmp/hybridmemory/",
                           "hmem",
                           page_buffer_size,
@@ -165,14 +182,23 @@ static void TestMultithreadAccess() {
                           num_hmem_instances) == true);
 
   // Allocate a big virt-memory, shared by all threads.
+#ifdef USE_MMAP
+  uint64_t buffer_size = hdd_file_size;
+  uint64_t number_pages = buffer_size / 4096;
+  uint64_t hdd_file_offset = 0;
+  uint8_t* buffer = (uint8_t*)hmem_map(
+      "/tmp/hybridmemory/hddfile", buffer_size, hdd_file_offset);
+  assert(buffer != NULL);
+  dbg("Use hmem-map()\n");
+  uint64_t real_memory_pages = ram_buffer_size / 4096;
+  uint64_t access_memory_pages = 6 * real_memory_pages;
+#else
   uint64_t number_pages = 1000ULL * 1000 * 10;
   uint64_t buffer_size = number_pages * 4096;
   uint8_t* buffer = (uint8_t*)hmem_alloc(buffer_size);
   assert(buffer != NULL);
-
-  uint64_t real_memory_pages = ram_buffer_size / 4096;
-
-  uint64_t access_memory_pages = 4 * real_memory_pages;
+  dbg("Use hmem-alloc()\n");
+#endif
 
   // Start parallel threads to access the virt-memory.
   uint32_t max_threads = 1;
@@ -180,23 +206,22 @@ static void TestMultithreadAccess() {
   uint64_t number_access = access_memory_pages;
   //uint64_t number_access = 1000UL * 25;
 
-
   for (uint32_t number_threads = max_threads; number_threads <= max_threads;
        number_threads *= 2) {
     uint64_t per_task_pages = access_memory_pages / number_threads;
     uint64_t per_task_access = number_access / number_threads;
     uint64_t begin_page = 0;
     for (uint32_t i = 0; i < number_threads; ++i) {
-      tasks[i].buffer = buffer;
-      tasks[i].size = buffer_size;
-      tasks[i].sequential = false;
-      tasks[i].id = i;
-      tasks[i].total_tasks = number_threads;
-
       tasks[i].begin_page = begin_page;
       tasks[i].number_pages = per_task_pages;
       tasks[i].number_access = per_task_access;
       begin_page += per_task_pages;
+
+      tasks[i].buffer = buffer;
+      tasks[i].size = buffer_size;
+      tasks[i].sequential = true;
+      tasks[i].id = i;
+      tasks[i].total_tasks = number_threads;
 
       pthread_mutex_init(&tasks[i].lock, NULL);
       pthread_mutex_lock(&tasks[i].lock);

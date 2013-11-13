@@ -155,8 +155,9 @@ uint64_t PageStatsTable::FindPagesWithMinCount(uint32_t pages_wanted,
     uint64_t pos = ptes_[pte_node_number].GetMinEntryIndex();
     pages->push_back((pmd_node_number << (pmd_bits_ + pte_bits_)) |
                     (pte_node_number << pte_bits_) | pos);
-    dbg("Get page %ld from pmd_node %ld, pte_node %ld\n",
-        pages->back(), pmd_node_number, pte_node_number);
+    dbg("Get page %ld from pmd_node %ld, pte_node %ld, access = %ld\n",
+        pages->back(), pmd_node_number, pte_node_number,
+        AccessCount(pages->back()));
     ptes_[pte_node_number].Set(pos, ptes_[pte_node_number].EntryValueLimit());
     pmds_[pmd_node_number].Increase(relative_pte_node_number, 1);
     pgd_.Increase(pmd_node_number, 1);

@@ -63,7 +63,9 @@ class VAddressRange {
 
   // Init a vaddress-range which is mapped to a backing hdd-file
   // starting at given file offset.
-  bool Init(uint64_t size, std::string& hdd_filename, uint64_t hdd_file_offset);
+  bool Init(uint64_t size,
+            const std::string& hdd_filename,
+            uint64_t hdd_file_offset);
 
   // Release internal structs.
   void Release();
@@ -147,6 +149,10 @@ class VAddressRangeGroup {
   bool Init();
 
   VAddressRange *AllocateVAddressRange(uint64_t size);
+
+  VAddressRange* AllocateVAddressRange(uint64_t size,
+                                       const std::string& hdd_filename,
+                                       uint64_t hdd_file_offset);
 
   bool ReleaseVAddressRange(VAddressRange *vaddr_range);
 

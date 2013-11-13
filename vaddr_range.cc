@@ -42,7 +42,7 @@ bool VAddressRange::Init(uint64_t size) {
 }
 
 bool VAddressRange::Init(uint64_t size,
-                         std::string& hdd_filename,
+                         const std::string& hdd_filename,
                          uint64_t hdd_file_offset) {
   assert(is_active_ == false);
   assert(hdd_file_offset % PAGE_SIZE == 0);
@@ -85,7 +85,10 @@ bool VAddressRange::Init(uint64_t size,
 }
 
 V2HMapMetadata* VAddressRange::GetV2HMapMetadata(uint64_t address_offset) {
-  assert(address_offset < size_);
+  if (address_offset >= size_) {
+    err("address-offset %ld >= size %ld\n", address_offset, size_);
+    assert(0);
+  }
   return &v2h_map_[address_offset >> PAGE_BITS];
 }
 
@@ -145,6 +148,38 @@ bool VAddressRangeGroup::Init() {
   return true;
 }
 
+VAddressRange* VAddressRangeGroup::AllocateVAddressRange(
+    uint64_t size,
+    const std::string& hdd_filename,
+    uint64_t hdd_file_offset) {
+  if (free_vaddr_ranges_ == 0) {
+    err("No vaddr-range available.\n");
+    return NULL;
+  }
+  assert(vaddr_range_bitmap_.any() == true);
+
+  for (uint32_t i = 0; i < total_vaddr_ranges_; ++i) {
+    if (vaddr_range_bitmap_[i] == 1) {
+      VAddressRange *vaddr_range = &vaddr_range_list_[i];
+      assert(vaddr_range->Init(size, hdd_filename, hdd_file_offset) == true);
+      vaddr_range_bitmap_[i] = 0;
+      --free_vaddr_ranges_;
+      ++inuse_vaddr_ranges_;
+      int ret = InsertNode(&tree_, vaddr_range->GetTreeNode());
+      assert(ret == inuse_vaddr_ranges_);
+      dbg("Have created a new vaddr-range: size %ld, backed by hdd-file %s "
+          "at offset %ld.\nNow have %d active vaddr-ranges.\n",
+          size,
+          hdd_filename.c_str(),
+          hdd_file_offset,
+          inuse_vaddr_ranges_);
+      return vaddr_range;
+    }
+  }
+  err("All vaddr-ranges used up.\n");
+  return NULL;
+}
+
 VAddressRange* VAddressRangeGroup::AllocateVAddressRange(uint64_t size) {
   if (free_vaddr_ranges_ == 0) {
     err("No vaddr-range available.\n");
@@ -157,8 +192,6 @@ VAddressRange* VAddressRangeGroup::AllocateVAddressRange(uint64_t size) {
     if (vaddr_range_bitmap_[i] == 1) {
       VAddressRange *vaddr_range = &vaddr_range_list_[i];
       assert(vaddr_range->Init(size) == true);
-      // TODO: each vaddr-range 1-on-1 maps to a hdd-file. Open the
-      // hdd file and records the filename / offset.
       vaddr_range_bitmap_[i] = 0;
       --free_vaddr_ranges_;
       ++inuse_vaddr_ranges_;
