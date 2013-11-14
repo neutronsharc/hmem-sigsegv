@@ -35,7 +35,8 @@ bool PageStatsTable::Init(const std::string& name, uint64_t total_pages) {
 
   // One byte count for each page. Init counts are 0 for all pages.
   total_pages_ = total_pages;
-  assert(posix_memalign((void**)&pte_entries_, PAGE_SIZE, total_pages_) == 0);
+  uint64_t alignment = PAGE_SIZE;
+  assert(posix_memalign((void**)&pte_entries_, alignment, total_pages_) == 0);
   assert(mlock(pte_entries_, total_pages_) == 0);
   memset(pte_entries_, 0, total_pages_);
 
@@ -52,6 +53,7 @@ bool PageStatsTable::Init(const std::string& name, uint64_t total_pages) {
         std::min<uint64_t>(remain_entries, entries_per_pte_node);
     ptes_[i].Init(pte_begin_entry, pte_node_entry_number);
     pte_begin_entry += pte_node_entry_number;
+    remain_entries -= pte_node_entry_number;
   }
 
   // Allocate PMD nodes. Each PMD node has (1 << pmd_bits_) entries,
@@ -64,14 +66,12 @@ bool PageStatsTable::Init(const std::string& name, uint64_t total_pages) {
   // All PMD nodes will collectively have "number_pte_nodes_" entries.
   number_pgd_pmd_entries_ = number_pmd_nodes_ + number_pte_nodes_;
   assert(posix_memalign((void**)&pgd_pmd_entries_,
-                        PAGE_SIZE,
+                        alignment,
                         number_pgd_pmd_entries_ * sizeof(uint16_t)) == 0);
   memset(pgd_pmd_entries_, 0, number_pgd_pmd_entries_ * sizeof(uint16_t));
 
   // Init PGD node.
   pgd_.Init(pgd_pmd_entries_, number_pmd_nodes_);
-  for (uint64_t i = 0; i < number_pmd_nodes_; ++i) {
-  }
 
   // Init PMD nodes.
   uint16_t* pmd_begin_entry = pgd_pmd_entries_ + number_pmd_nodes_;
@@ -81,6 +81,28 @@ bool PageStatsTable::Init(const std::string& name, uint64_t total_pages) {
         std::min<uint64_t>(remain_entries, entries_per_pmd_node);
     pmds_[i].Init(pmd_begin_entry, pmd_node_entry_number);
     pmd_begin_entry += pmd_node_entry_number;
+    remain_entries -= pmd_node_entry_number;
+  }
+
+  // The last entry in last PMD node may point to a PTE node that's not fully
+  // populated with flash-pages.  This partial-emptiness propagates up to PGD
+  // node, such that the last entry in PGD node may not be fully filled with
+  // flash pages. As a result, the access-count of the last-entry in the last
+  // node needs to be compensated to give a fair count-comparison.
+  if (total_pages_ % entries_per_pte_node != 0) {
+    uint64_t pages_at_last_entry_in_last_pmd_node =
+        total_pages_ % entries_per_pte_node;
+    pmds_[number_pmd_nodes_ - 1].set_last_entry_needs_compensation(true);
+    pmds_[number_pmd_nodes_ - 1].set_last_entry_compensation(
+        (double)entries_per_pte_node / pages_at_last_entry_in_last_pmd_node);
+  }
+  uint64_t total_pages_per_full_pmd_node = 1ULL << (pte_bits_ + pmd_bits_);
+  if (total_pages_ % total_pages_per_full_pmd_node != 0) {
+    uint64_t pages_at_last_entry_in_pgd =
+        total_pages_ % total_pages_per_full_pmd_node;
+    pgd_.set_last_entry_needs_compensation(true);
+    pgd_.set_last_entry_compensation((double)total_pages_per_full_pmd_node /
+                                     pages_at_last_entry_in_pgd);
   }
 
   name_ = name;
@@ -122,7 +144,10 @@ void PageStatsTable::IncreaseAccessCount(uint64_t page_number, uint32_t delta) {
 }
 
 uint64_t PageStatsTable::AccessCount(uint64_t page_number) {
-  assert(page_number < total_pages_);
+  if (page_number >= total_pages_) {
+    err("page number %ld >= total pages %ld\n", page_number, total_pages_);
+    assert(0);
+  }
   uint64_t pte_node_number = (page_number >> pte_bits_);
   uint64_t offset_in_pte_node = (page_number & pte_mask_);
   return ptes_[pte_node_number].GetValue(offset_in_pte_node);
@@ -150,6 +175,7 @@ uint64_t PageStatsTable::FindPagesWithMinCount(uint32_t pages_wanted,
   uint64_t relative_pte_node_number = pmds_[pmd_node_number].GetMinEntryIndex();
   uint64_t pte_node_number = (pmd_node_number << pmd_bits_) |
                               relative_pte_node_number;
+  dbg("min-access at pmd node %ld, pte node %ld\n", pmd_node_number, pte_node_number);
   // Get the "pages_wanted" pages with smallest count value.
   for (uint64_t i = 0; i < pages_wanted; ++i) {
     uint64_t pos = ptes_[pte_node_number].GetMinEntryIndex();
@@ -158,7 +184,8 @@ uint64_t PageStatsTable::FindPagesWithMinCount(uint32_t pages_wanted,
     dbg("Get page %ld from pmd_node %ld, pte_node %ld, access = %ld\n",
         pages->back(), pmd_node_number, pte_node_number,
         AccessCount(pages->back()));
-    ptes_[pte_node_number].Set(pos, ptes_[pte_node_number].EntryValueLimit());
+    //ptes_[pte_node_number].Set(pos, ptes_[pte_node_number].EntryValueLimit());
+    ptes_[pte_node_number].Increase(pos, 1);
     pmds_[pmd_node_number].Increase(relative_pte_node_number, 1);
     pgd_.Increase(pmd_node_number, 1);
   }

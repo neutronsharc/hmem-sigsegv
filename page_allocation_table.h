@@ -10,9 +10,7 @@
 #include <vector>
 
 #include "bitmap.h"
-
-// Each bitmap at the PAT leaf level represents up to 2^12.
-#define BITMAP_BITS (12)
+#include "hybrid_memory_const.h"
 
 // This struct is a node in the page-alloaction-table tree.
 struct PageAllocationTableNode {

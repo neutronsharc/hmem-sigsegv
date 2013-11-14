@@ -10,16 +10,18 @@
 #include <vector>
 
 #include "bitmap.h"
-
-// a PTE node includes 2^12 pages.
-#define PTE_BITS (12)
+#include "hybrid_memory_const.h"
 
 // This struct represent a PGD/PMD/PTE node in the PST tabe.
 template <typename T>
 class PageStatsTableNode {
  public:
   PageStatsTableNode()
-      : entries_(NULL), number_entries_(0), entry_value_limit_(0) {}
+      : entries_(NULL),
+        number_entries_(0),
+        entry_value_limit_(0),
+        last_entry_needs_compensation_(false),
+        last_entry_compensation_(1.0) {}
 
   ~PageStatsTableNode() {}
 
@@ -72,12 +74,22 @@ class PageStatsTableNode {
   // The index is relative offset of the entry in this node.
   uint64_t GetMinEntryIndex() {
     uint64_t min_index = 0;
-    T min_value = (T)entry_value_limit_;
-    for (uint64_t i = 0; i < number_entries_; ++i) {
-      if (entries_[i] < min_value) {
+    if (number_entries_ == 1) {
+      return min_index;
+    }
+    uint64_t min_value = entry_value_limit_;
+    for (uint64_t i = 0; i < number_entries_ - 1; ++i) {
+      if (min_value > entries_[i]) {
         min_value = entries_[i];
         min_index = i;
       }
+    }
+    uint64_t last_entry_value = entries_[number_entries_ - 1];
+    if (last_entry_needs_compensation_) {
+      last_entry_value *= last_entry_compensation_;
+    }
+    if (min_value > last_entry_value) {
+      min_index = number_entries_ - 1;
     }
     return min_index;
   }
@@ -102,20 +114,35 @@ class PageStatsTableNode {
     child_nodes_ = child_nodes;
   }
 
- protected:
-  // Each entry records number of free pages at a child node.
-  T* entries_;
+  void set_last_entry_compensation(double last_entry_compensation) {
+    last_entry_compensation_ = last_entry_compensation;
+  }
 
-  // Pointers to child nodes.
-  // This field isn't used by PTE nodes because it's children
-  // are represented by "entries_" array.
-  PageStatsTableNode* child_nodes_;
+  void set_last_entry_needs_compensation(bool needs_compensation) {
+    last_entry_needs_compensation_ = needs_compensation;
+  }
+
+ protected:
+  // Each entry records access stats of all pags at a child node.
+  T* entries_;
 
   // Size of "entries_" array.
   uint64_t number_entries_;
 
   // An entry value cannot exceed this limit.
   uint64_t entry_value_limit_;
+
+  // Pointers to child nodes.
+  // This field isn't used by PTE nodes because it's children
+  // are represented by "entries_" array.
+  PageStatsTableNode* child_nodes_;
+
+  // The last entry may point to a partially-filled tree, so its
+  // conuters needs compensation to make a fair comparison against
+  // other entries.
+  bool last_entry_needs_compensation_;
+
+  double last_entry_compensation_;
 };
 
 

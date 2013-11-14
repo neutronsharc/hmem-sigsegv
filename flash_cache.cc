@@ -108,7 +108,7 @@ uint32_t FlashCache::MigrateToHDD(
         (vaddress_page_number << PAGE_BITS) + vaddress_range->hdd_file_offset();
     uint8_t* data_buffer;
     uint64_t io_size = PAGE_SIZE;
-    dbg("%d: flash-pg#: %ld, virt-page#: %ld at vaddr-range %d\n",
+    dbg("%ld: flash-pg#: %ld, virt-page#: %ld at vaddr-range %d\n",
         i,
         flash_page_number,
         vaddress_page_number,
@@ -118,7 +118,7 @@ uint32_t FlashCache::MigrateToHDD(
       // to. Don't write this page to hdd file because we don't know
       // if the update is complete.
       assert(v2hmap->exist_page_cache);
-      dbg("flash page %d: virt-page %p: exist in page-cache, but its "
+      dbg("flash page %ld: virt-page %p: exist in page-cache, but its "
           "flash-cache copy will be moved to hdd\n",
           i,
           virtual_page_address);
@@ -145,6 +145,10 @@ uint32_t FlashCache::MigrateToHDD(
       assert(aux_buffer_list_.size() > 0);
       data_buffer = aux_buffer_list_.back();
       aux_buffer_list_.pop_back();
+      dbg("flash-page %p: virt-page %ld: exist-dirty in flash-cache, "
+          "moved to hdd\n",
+          flash_page_number,
+          virtual_page_address);
       // TODO: use async-io to issue multiple (read-flash, write-hdd) chains.
       assert(pread(flash_fd_,
                    data_buffer,
@@ -173,7 +177,11 @@ uint32_t FlashCache::EvictItems(uint32_t pages_to_evict) {
   for (uint32_t i = 0; i < evicted_pages; ++i) {
     // This evicted pages must have be associated to mastering vaddress-range.
     F2VMapItem* f2vmap = &f2v_map_[pages[i]];
-    assert(f2vmap->vaddress_range_id < INVALID_VADDRESS_RANGE_ID);
+    if (f2vmap->vaddress_range_id >= INVALID_VADDRESS_RANGE_ID) {
+      err("flash page %ld: its f2vmap->vaddr_rang_id is invalid: %d\n",
+          pages[i], f2vmap->vaddress_range_id);
+      assert(0);
+    }
     VAddressRange* vaddress_range =
         GetVAddressRangeFromId(f2vmap->vaddress_range_id);
     if (vaddress_range->hdd_file_fd() > 0) {
@@ -239,11 +247,6 @@ bool FlashCache::AddPage(void* page,
       GetPageOffsetInVAddressRange(vaddress_range_id, virtual_page_address);
   f2v_map_[flash_page_number].vaddress_page_offset = vaddress_page_offset;
   f2v_map_[flash_page_number].vaddress_range_id = vaddress_range_id;
-  if (flash_page_number >= 12800 && flash_page_number <= 12807) {
-    dbg("virt-page %ld to flash-page %ld\n",
-        vaddress_page_offset,
-        flash_page_number);
-  }
 
   V2HMapMetadata* v2h_map = GetV2HMap(vaddress_range_id, vaddress_page_offset);
   assert(v2hmap == v2h_map);

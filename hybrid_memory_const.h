@@ -18,4 +18,11 @@
 
 #define MAX_HMEM_INSTANCES (128)
 
+// Page allocation table for flash-cache: each bitmap at the PAT leaf
+// level represents 2^12 pages.
+#define BITMAP_BITS (12)
+
+// Flash-cache's Page stats table: a PTE node includes 2^12 pages.
+#define PTE_BITS (12)
+
 #endif  // HYBRID_MEMORY_CONST_H_

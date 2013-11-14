@@ -191,7 +191,7 @@ static void TestMultithreadAccess() {
   assert(buffer != NULL);
   dbg("Use hmem-map()\n");
   uint64_t real_memory_pages = ram_buffer_size / 4096;
-  uint64_t access_memory_pages = 6 * real_memory_pages;
+  uint64_t access_memory_pages = 5 * real_memory_pages + 250;
 #else
   uint64_t number_pages = 1000ULL * 1000 * 10;
   uint64_t buffer_size = number_pages * 4096;
