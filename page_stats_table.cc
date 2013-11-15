@@ -93,16 +93,22 @@ bool PageStatsTable::Init(const std::string& name, uint64_t total_pages) {
     uint64_t pages_at_last_entry_in_last_pmd_node =
         total_pages_ % entries_per_pte_node;
     pmds_[number_pmd_nodes_ - 1].set_last_entry_needs_compensation(true);
-    pmds_[number_pmd_nodes_ - 1].set_last_entry_compensation(
-        (double)entries_per_pte_node / pages_at_last_entry_in_last_pmd_node);
+    double compensation =
+        (double)entries_per_pte_node / pages_at_last_entry_in_last_pmd_node;
+    pmds_[number_pmd_nodes_ - 1].set_last_entry_compensation(compensation);
+    dbg("PMD[%ld]: last entry compensation = %f\n",
+        number_pmd_nodes_ - 1,
+        compensation);
   }
   uint64_t total_pages_per_full_pmd_node = 1ULL << (pte_bits_ + pmd_bits_);
   if (total_pages_ % total_pages_per_full_pmd_node != 0) {
     uint64_t pages_at_last_entry_in_pgd =
         total_pages_ % total_pages_per_full_pmd_node;
     pgd_.set_last_entry_needs_compensation(true);
-    pgd_.set_last_entry_compensation((double)total_pages_per_full_pmd_node /
-                                     pages_at_last_entry_in_pgd);
+    double compensation =
+        (double)total_pages_per_full_pmd_node / pages_at_last_entry_in_pgd;
+    pgd_.set_last_entry_compensation(compensation);
+    dbg("PGD: last entry compensation = %f\n", compensation);
   }
 
   name_ = name;
@@ -181,9 +187,13 @@ uint64_t PageStatsTable::FindPagesWithMinCount(uint32_t pages_wanted,
     uint64_t pos = ptes_[pte_node_number].GetMinEntryIndex();
     pages->push_back((pmd_node_number << (pmd_bits_ + pte_bits_)) |
                     (pte_node_number << pte_bits_) | pos);
-    dbg("Get page %ld from pmd_node %ld, pte_node %ld, access = %ld\n",
-        pages->back(), pmd_node_number, pte_node_number,
-        AccessCount(pages->back()));
+    if (pages->back() == 12288) {
+      dbg("Get page %ld from pmd_node %ld, pte_node %ld, access = %ld\n",
+          pages->back(),
+          pmd_node_number,
+          pte_node_number,
+          AccessCount(pages->back()));
+    }
     //ptes_[pte_node_number].Set(pos, ptes_[pte_node_number].EntryValueLimit());
     ptes_[pte_node_number].Increase(pos, 1);
     pmds_[pmd_node_number].Increase(relative_pte_node_number, 1);

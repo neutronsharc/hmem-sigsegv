@@ -270,6 +270,7 @@ bool PageAllocationTable::Release() {
 
 bool PageAllocationTable::AllocateOnePage(uint64_t *page) {
   if (free_pages_ == 0) {
+    printf("\n");
     err("PAT \"%s\": No more free pages available.\n", name_.c_str());
     return false;
   }
@@ -301,31 +302,36 @@ bool PageAllocationTable::AllocatePages(
     assert(pgd_.GetPages(number_of_pages, &bitmap_indices, &bitmap_free_pages) ==
         true);
     for (uint64_t i = 0; i < bitmap_indices.size(); ++i) {
+      uint64_t offset_in_pgd_node = bitmap_indices[i];
       uint64_t bitmap_index = bitmap_indices[i];
       for (uint64_t j = 0; j < bitmap_free_pages[i]; j++) {
         uint64_t page_number = bitmaps_[bitmap_index].ffs(true);
         assert(page_number > 0);
-        pages->push_back((bitmap_index << bitmap_bits_) + (page_number - 1));
+        pages->push_back((offset_in_pgd_node << bitmap_bits_) |
+                         (page_number - 1));
       }
     }
   } else {
     std::vector<uint64_t> pmd_indices;
     std::vector<uint64_t> pmd_free_pages;
     assert(pgd_.GetPages(number_of_pages, &pmd_indices, &pmd_free_pages) ==
-        true);
+           true);
     for (uint64_t i = 0; i < pmd_indices.size(); ++i) {
+      uint64_t offset_in_pgd_node = pmd_indices[i];
       uint64_t pmd_index = pmd_indices[i];
       uint64_t free_pages_from_pmd = pmd_free_pages[i];
       std::vector<uint64_t> bitmap_indices;
       std::vector<uint64_t> bitmap_free_pages;
-      assert(pmds_[pmd_index].GetPages(
-            free_pages_from_pmd, &bitmap_indices, &bitmap_free_pages) == true);
+      assert(pmds_[pmd_index].GetPages(free_pages_from_pmd,
+                                       &bitmap_indices,
+                                       &bitmap_free_pages) == true);
       for (uint64_t j = 0; j < bitmap_indices.size(); ++j) {
+        uint64_t offset_in_pmd_node = bitmap_indices[j];
         uint64_t bitmap_index =
-          (pmd_index << pmd_bits_ ) | bitmap_indices[j];
+            (offset_in_pgd_node << pmd_bits_) | offset_in_pmd_node;
         for (uint64_t k = 0; k < bitmap_free_pages[j]; ++k) {
           uint64_t page_number = bitmaps_[bitmap_index].ffs(true);
-          if (page_number ==0) {
+          if (page_number == 0) {
             err("pmd[%ld].entry[%ld] (bitmap %ld) : want %ld, only have %ld.\n",
                 pmd_index,
                 bitmap_indices[j],
@@ -334,8 +340,9 @@ bool PageAllocationTable::AllocatePages(
                 bitmaps_[bitmap_index].number_of_set_bits());
             assert(0);
           }
-          pages->push_back((pmd_index << (pmd_bits_ + bitmap_bits_)) |
-              (bitmap_index << bitmap_bits_) | (page_number - 1));
+          pages->push_back((offset_in_pgd_node << (pmd_bits_ + bitmap_bits_)) |
+                           (offset_in_pmd_node << bitmap_bits_) |
+                           (page_number - 1));
         }
       }
     }
@@ -347,22 +354,25 @@ bool PageAllocationTable::AllocatePages(
 
 void PageAllocationTable::FreePage(uint64_t page) {
   assert(page >= 0 && page < total_pages_);
+  uint64_t offset_in_bitmap = page & bitmap_mask_;
   if (levels_ == 1) {
-    bitmaps_[0].set(page + 1);
+    assert(bitmaps_[0].get(offset_in_bitmap + 1) == 0);
+    bitmaps_[0].set(offset_in_bitmap + 1);
   } else if (levels_ == 2) {
     uint64_t bitmap_index = page >> bitmap_bits_;
-    uint64_t page_offset = page & ((1ULL << bitmap_bits_) - 1);
     // bitmap uses page number [1, total-pages].
-    bitmaps_[bitmap_index].set(page_offset + 1);
+    assert(bitmaps_[bitmap_index].get(offset_in_bitmap + 1) == 0);
+    bitmaps_[bitmap_index].set(offset_in_bitmap + 1);
     pgd_.ReleasePages(bitmap_index, 1);
   } else {
-    uint64_t pmd_index = (page >> (bitmap_bits_ + pmd_bits_)) & pgd_mask_;
+    uint64_t offset_in_pgd_node = (page >> (bitmap_bits_ + pmd_bits_)) & pgd_mask_;
+    uint64_t offset_in_pmd_node = (page >> bitmap_bits_) & pmd_mask_;
     uint64_t bitmap_index = page >> bitmap_bits_;
-    uint64_t page_offset = page & bitmap_mask_;
     // bitmap uses page number [1, total-pages].
-    bitmaps_[bitmap_index].set(page_offset + 1);
-    pmds_[pmd_index].ReleasePages(bitmap_index & pmd_mask_, 1);
-    pgd_.ReleasePages(pmd_index, 1);
+    assert(bitmaps_[bitmap_index].get(offset_in_bitmap + 1) == 0);
+    bitmaps_[bitmap_index].set(offset_in_bitmap + 1);
+    pmds_[offset_in_pgd_node].ReleasePages(offset_in_pmd_node, 1);
+    pgd_.ReleasePages(offset_in_pgd_node, 1);
   }
   ++free_pages_;
   --used_pages_;

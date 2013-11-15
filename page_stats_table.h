@@ -9,6 +9,7 @@
 #include <string>
 #include <vector>
 
+#include "debug.h"
 #include "bitmap.h"
 #include "hybrid_memory_const.h"
 
@@ -86,7 +87,8 @@ class PageStatsTableNode {
     }
     uint64_t last_entry_value = entries_[number_entries_ - 1];
     if (last_entry_needs_compensation_) {
-      last_entry_value *= last_entry_compensation_;
+      last_entry_value =
+          (uint64_t)(last_entry_compensation_ * last_entry_value);
     }
     if (min_value > last_entry_value) {
       min_index = number_entries_ - 1;

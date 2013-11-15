@@ -108,11 +108,13 @@ uint32_t FlashCache::MigrateToHDD(
         (vaddress_page_number << PAGE_BITS) + vaddress_range->hdd_file_offset();
     uint8_t* data_buffer;
     uint64_t io_size = PAGE_SIZE;
-    dbg("%ld: flash-pg#: %ld, virt-page#: %ld at vaddr-range %d\n",
-        i,
-        flash_page_number,
-        vaddress_page_number,
-        f2vmap->vaddress_range_id);
+    if (flash_page_number == 12288) {
+      dbg("%ld: flash-pg#: %ld, virt-page#: %ld at vaddr-range %d\n",
+          i,
+          flash_page_number,
+          vaddress_page_number,
+          f2vmap->vaddress_range_id);
+    }
     if (v2hmap->dirty_page_cache) {
       // The virt-page has been materialized in page cache, and is being written
       // to. Don't write this page to hdd file because we don't know
@@ -145,10 +147,12 @@ uint32_t FlashCache::MigrateToHDD(
       assert(aux_buffer_list_.size() > 0);
       data_buffer = aux_buffer_list_.back();
       aux_buffer_list_.pop_back();
-      dbg("flash-page %p: virt-page %ld: exist-dirty in flash-cache, "
-          "moved to hdd\n",
-          flash_page_number,
-          virtual_page_address);
+      if (flash_page_number == 12288) {
+        dbg("flash-page %ld: virt-page-number %ld: exist-dirty in flash-cache, "
+            "moved to hdd\n",
+            flash_page_number,
+            vaddress_page_number);
+      }
       // TODO: use async-io to issue multiple (read-flash, write-hdd) chains.
       assert(pread(flash_fd_,
                    data_buffer,
@@ -175,17 +179,22 @@ uint32_t FlashCache::EvictItems(uint32_t pages_to_evict) {
   // If have backing hdd file, shall write dirty pages to back hdd.
   std::vector<uint64_t> flash_pages_writeto_hdd;
   for (uint32_t i = 0; i < evicted_pages; ++i) {
-    // This evicted pages must have be associated to mastering vaddress-range.
-    F2VMapItem* f2vmap = &f2v_map_[pages[i]];
+    uint64_t flash_page = pages[i];
+    // This evicted pages must have be associated to an owner
+    // vaddress-range.
+    F2VMapItem* f2vmap = &f2v_map_[flash_page];
     if (f2vmap->vaddress_range_id >= INVALID_VADDRESS_RANGE_ID) {
       err("flash page %ld: its f2vmap->vaddr_rang_id is invalid: %d\n",
-          pages[i], f2vmap->vaddress_range_id);
+          flash_page, f2vmap->vaddress_range_id);
       assert(0);
     }
     VAddressRange* vaddress_range =
         GetVAddressRangeFromId(f2vmap->vaddress_range_id);
-    if (vaddress_range->hdd_file_fd() > 0) {
-      flash_pages_writeto_hdd.push_back(pages[i]);
+    uint64_t vaddress_page_number = f2vmap->vaddress_page_offset;
+    V2HMapMetadata* v2hmap =
+        vaddress_range->GetV2HMapMetadata(vaddress_page_number << PAGE_BITS);
+    if (v2hmap->dirty_flash_cache && (vaddress_range->hdd_file_fd() > 0)) {
+      flash_pages_writeto_hdd.push_back(flash_page);
     }
   }
   if (flash_pages_writeto_hdd.size() > 0) {
@@ -193,8 +202,14 @@ uint32_t FlashCache::EvictItems(uint32_t pages_to_evict) {
   }
 
   for (uint32_t i = 0; i < evicted_pages; ++i) {
-    page_allocate_table_.FreePage(pages[i]);
-    F2VMapItem* f2vmap = &f2v_map_[pages[i]];
+    uint64_t flash_page = pages[i];
+    page_allocate_table_.FreePage(flash_page);
+    F2VMapItem* f2vmap = &f2v_map_[flash_page];
+    if (f2vmap->vaddress_range_id >= INVALID_VADDRESS_RANGE_ID) {
+      err("flash page %ld: its f2vmap->vaddr_rang_id is invalid: %d\n",
+          flash_page, f2vmap->vaddress_range_id);
+      assert(0);
+    }
     VAddressRange* vaddress_range =
         GetVAddressRangeFromId(f2vmap->vaddress_range_id);
     uint64_t vaddress_page_number = f2vmap->vaddress_page_offset;
@@ -203,6 +218,13 @@ uint32_t FlashCache::EvictItems(uint32_t pages_to_evict) {
     v2hmap->dirty_flash_cache = 0;
     v2hmap->exist_flash_cache = 0;
     f2vmap->vaddress_range_id = INVALID_VADDRESS_RANGE_ID;
+    f2vmap->vaddress_page_offset = 0;
+    if (flash_page == 12288) {
+      dbg("free flash-page %ld - virt-page %ld, now its vaddr-range-id=%d\n",
+          flash_page,
+          vaddress_page_number,
+          f2vmap->vaddress_range_id);
+    }
   }
   return evicted_pages;
 }
@@ -215,36 +237,57 @@ bool FlashCache::AddPage(void* page,
                          void* virtual_page_address) {
   assert(vaddress_range_id < INVALID_VADDRESS_RANGE_ID);
   assert(obj_size == PAGE_SIZE);
+  uint64_t vaddress_page_offset =
+      GetPageOffsetInVAddressRange(vaddress_range_id, virtual_page_address);
   // A flash-page number relative to the beginning of flash-cache file.
   uint64_t flash_page_number;
   if (v2hmap->exist_flash_cache) {
     assert(v2hmap->flash_page_offset < total_flash_pages_);
     flash_page_number = v2hmap->flash_page_offset;
+    F2VMapItem* f2vmap = &f2v_map_[flash_page_number];
+    assert(f2vmap->vaddress_page_offset == vaddress_page_offset);
+    assert(f2vmap->vaddress_range_id == vaddress_range_id);
+    if (flash_page_number == 12288) {
+      dbg("^^^^^  pos 1: flash-page %ld for virt-page %ld, vaddr-range %d\n",
+          flash_page_number, vaddress_page_offset, vaddress_range_id);
+    }
   } else {
     while (page_allocate_table_.AllocateOnePage(&flash_page_number) == false) {
-      // TODO: Evict some pages from flash-cache to make space.
+      // Evict some pages from flash-cache to make space.
       uint32_t pages_to_evict = 16;
       EvictItems(pages_to_evict);
-      assert(page_allocate_table_.AllocateOnePage(&flash_page_number) == true);
+      if (page_allocate_table_.AllocateOnePage(&flash_page_number) == true) {
+        dbg("after evict, first alloc-flash-page = %ld for virt-page %ld at "
+            "vaddr-range-id %d\n",
+            flash_page_number,
+            vaddress_page_offset,
+            vaddress_range_id);
+        break;
+      } else {
+        assert(0);
+      }
+    }
+    if (flash_page_number == 12288) {
+      dbg("^^^^^  pos 2: flash-page %ld for virt-page %ld, vaddr-range %d\n",
+          flash_page_number, vaddress_page_offset, vaddress_range_id);
     }
     assert(f2v_map_[flash_page_number].vaddress_range_id ==
            INVALID_VADDRESS_RANGE_ID);
   }
-
-  if (pwrite(flash_fd_, page, obj_size, flash_page_number << PAGE_BITS) !=
-      obj_size) {
-    err("Failed to write to flash-cache %s: flash-page: %ld, "
-        "virtual-address=%p from vaddr-range %d\n",
-        flash_filename_.c_str(),
-        flash_page_number,
-        virtual_page_address,
-        vaddress_range_id);
-    perror("flash pwrite failed: ");
-    return false;
+  if (!v2hmap->exist_flash_cache || is_dirty) {
+    if (pwrite(flash_fd_, page, obj_size, flash_page_number << PAGE_BITS) !=
+        obj_size) {
+      err("Failed to write to flash-cache %s: flash-page: %ld, "
+          "virtual-address=%p from vaddr-range %d\n",
+          flash_filename_.c_str(),
+          flash_page_number,
+          virtual_page_address,
+          vaddress_range_id);
+      perror("flash pwrite failed: ");
+      return false;
+    }
   }
 
-  uint64_t vaddress_page_offset =
-      GetPageOffsetInVAddressRange(vaddress_range_id, virtual_page_address);
   f2v_map_[flash_page_number].vaddress_page_offset = vaddress_page_offset;
   f2v_map_[flash_page_number].vaddress_range_id = vaddress_range_id;
 
@@ -254,6 +297,12 @@ bool FlashCache::AddPage(void* page,
   v2hmap->dirty_flash_cache = is_dirty;
   v2hmap->flash_page_offset = flash_page_number;
   page_stats_table_.IncreaseAccessCount(flash_page_number, 1);
+  if (flash_page_number == 12288) {
+    dbg("flash page %ld: access-count=%ld, vaddress-range-id=%d\n",
+        flash_page_number,
+        page_stats_table_.AccessCount(flash_page_number),
+        f2v_map_[flash_page_number].vaddress_range_id);
+  }
   return true;
 }
 
@@ -270,7 +319,8 @@ bool FlashCache::LoadPage(void* data,
 
   if (pread(flash_fd_, data, obj_size, flash_page_number << PAGE_BITS) !=
       obj_size) {
-    err("Failed to read flash-cache %s: flash-page %ld, to vaddr-range %d, page %ld\n",
+    err("Failed to read flash-cache %s: flash-page %ld, to vaddr-range %d, "
+        "page %ld\n",
         flash_filename_.c_str(),
         flash_page_number,
         vaddress_range_id,
