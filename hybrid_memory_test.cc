@@ -49,13 +49,15 @@ static void* AccessHybridMemoryWriteThenRead(void *arg) {
   pthread_mutex_lock(&task->lock);
   // If we use hdd-file backed mmap(), the init data is all "F".
 #ifdef USE_MMAP
-  for (uint64_t i = 0; i < task->number_access; ++i) {
-    target_page_number = task->begin_page + (i % task->number_pages);
-    uint64_t* p =
-        (uint64_t*)(task->buffer + (target_page_number << PAGE_BITS) + 16);
-    assert(*p == 0xFFFFFFFFFFFFFFFF);
-    if (i && i % 1000 == 0) {
-      printf("use-mmap: prefault: %ld\n", i);
+  if (task->sequential) {
+    for (uint64_t i = 0; i < task->number_access; ++i) {
+      target_page_number = task->begin_page + (i % task->number_pages);
+      uint64_t* p =
+          (uint64_t*)(task->buffer + (target_page_number << PAGE_BITS) + 16);
+      assert(*p == 0xFFFFFFFFFFFFFFFF);
+      if (i && i % 1000 == 0) {
+        printf("use-mmap: prefault: %ld\n", i);
+      }
     }
   }
   HybridMemoryStats();
@@ -68,12 +70,16 @@ static void* AccessHybridMemoryWriteThenRead(void *arg) {
       (uint64_t*)(task->buffer + (target_page_number << PAGE_BITS) + 16);
     clock_gettime(CLOCK_REALTIME, &tstart);
     //*p = i;
+    //assert(*p == 0xFFFFFFFFFFFFFFFF);
     *p = target_page_number;
     clock_gettime(CLOCK_REALTIME, &tend);
     latency_ns = (tend.tv_sec - tstart.tv_sec) * 1000000000 +
                  (tend.tv_nsec - tstart.tv_nsec);
     if (latency_ns > max_write_latency_ns) {
       max_write_latency_ns = latency_ns;
+    }
+    if (i && i % 1000 == 0) {
+      printf("worker: write : %ld\n", i);
     }
   }
   faults_step2 = NumberOfPageFaults();
@@ -90,8 +96,6 @@ static void* AccessHybridMemoryWriteThenRead(void *arg) {
     uint64_t* p =
       (uint64_t*)(task->buffer + (target_page_number << PAGE_BITS) + 16);
     clock_gettime(CLOCK_REALTIME, &tstart);
-    //if (*p != 0xA5) {
-    //if (*p != i) {
     if (*p != target_page_number) {
       if (task->sequential) {
         err("vaddr %p: should be 0x%lx, data = %lx\n", p, i, *p);
@@ -104,6 +108,9 @@ static void* AccessHybridMemoryWriteThenRead(void *arg) {
                  (tend.tv_nsec - tstart.tv_nsec);
     if (latency_ns > max_read_latency_ns) {
       max_read_latency_ns = latency_ns;
+    }
+    if (i && i % 1000 == 0) {
+      printf("worker: read: %ld\n", i);
     }
   }
   faults_step3 = NumberOfPageFaults();
@@ -191,7 +198,7 @@ static void TestMultithreadAccess() {
   assert(buffer != NULL);
   dbg("Use hmem-map()\n");
   uint64_t real_memory_pages = ram_buffer_size / 4096;
-  uint64_t access_memory_pages = hdd_file_size / 4096;
+  uint64_t access_memory_pages = ram_buffer_size / 4096 * 10 - 100;
 #else
   uint64_t number_pages = 1000ULL * 1000 * 10;
   uint64_t buffer_size = number_pages * 4096;
@@ -219,7 +226,7 @@ static void TestMultithreadAccess() {
 
       tasks[i].buffer = buffer;
       tasks[i].size = buffer_size;
-      tasks[i].sequential = true;
+      tasks[i].sequential = false;
       tasks[i].id = i;
       tasks[i].total_tasks = number_threads;
 

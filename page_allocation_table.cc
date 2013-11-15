@@ -270,8 +270,6 @@ bool PageAllocationTable::Release() {
 
 bool PageAllocationTable::AllocateOnePage(uint64_t *page) {
   if (free_pages_ == 0) {
-    printf("\n");
-    err("PAT \"%s\": No more free pages available.\n", name_.c_str());
     return false;
   }
   std::vector<uint64_t> pages;
@@ -285,8 +283,6 @@ bool PageAllocationTable::AllocateOnePage(uint64_t *page) {
 bool PageAllocationTable::AllocatePages(
     uint64_t number_of_pages, std::vector<uint64_t>* pages) {
   if (free_pages_ < number_of_pages) {
-    err("PAT \"%s\": cannot alloc %ld pages, free-pages = %ld\n",
-        name_.c_str(), number_of_pages, free_pages_);
     return false;
   }
   pages->clear();
@@ -361,7 +357,14 @@ void PageAllocationTable::FreePage(uint64_t page) {
   } else if (levels_ == 2) {
     uint64_t bitmap_index = page >> bitmap_bits_;
     // bitmap uses page number [1, total-pages].
-    assert(bitmaps_[bitmap_index].get(offset_in_bitmap + 1) == 0);
+    if (bitmaps_[bitmap_index].get(offset_in_bitmap + 1) != 0) {
+      err("flash-page %ld at bitmap_idx %ld offset %ld: stat = %d\n",
+          page,
+          bitmap_index,
+          offset_in_bitmap,
+          bitmaps_[bitmap_index].get(offset_in_bitmap + 1));
+      assert(0);
+    }
     bitmaps_[bitmap_index].set(offset_in_bitmap + 1);
     pgd_.ReleasePages(bitmap_index, 1);
   } else {

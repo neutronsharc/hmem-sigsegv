@@ -131,8 +131,8 @@ uint32_t FlashCache::MigrateToHDD(
       assert(ram_cache_item != NULL);
       assert(ram_cache_item->hash_key == virtual_page_address);
       assert(v2hmap == ram_cache_item->v2hmap);
-      dbg("virt-page %p: exist in ram-cache, but its flash-cache copy will be "
-          "moved to hdd\n",
+      dbg("virt-page %p: exist in ram-cache, but its flash-cache copy "
+          "will be moved to hdd\n",
           virtual_page_address);
 #if 0
       data_buffer = ram_cache_item->data;
@@ -219,12 +219,6 @@ uint32_t FlashCache::EvictItems(uint32_t pages_to_evict) {
     v2hmap->exist_flash_cache = 0;
     f2vmap->vaddress_range_id = INVALID_VADDRESS_RANGE_ID;
     f2vmap->vaddress_page_offset = 0;
-    if (flash_page == 12288) {
-      dbg("free flash-page %ld - virt-page %ld, now its vaddr-range-id=%d\n",
-          flash_page,
-          vaddress_page_number,
-          f2vmap->vaddress_range_id);
-    }
   }
   return evicted_pages;
 }
@@ -252,18 +246,15 @@ bool FlashCache::AddPage(void* page,
           flash_page_number, vaddress_page_offset, vaddress_range_id);
     }
   } else {
-    while (page_allocate_table_.AllocateOnePage(&flash_page_number) == false) {
+    if (page_allocate_table_.AllocateOnePage(&flash_page_number) == false) {
       // Evict some pages from flash-cache to make space.
       uint32_t pages_to_evict = 16;
       EvictItems(pages_to_evict);
-      if (page_allocate_table_.AllocateOnePage(&flash_page_number) == true) {
-        dbg("after evict, first alloc-flash-page = %ld for virt-page %ld at "
+      if (page_allocate_table_.AllocateOnePage(&flash_page_number) == false) {
+        err("Unable to alloc flash page even after evict: virt-page %ld at "
             "vaddr-range-id %d\n",
-            flash_page_number,
             vaddress_page_offset,
             vaddress_range_id);
-        break;
-      } else {
         assert(0);
       }
     }

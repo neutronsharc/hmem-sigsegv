@@ -227,16 +227,33 @@ static void SigSegvAction(int sig, siginfo_t* sig_info, void* ucontext) {
   //    index to virt-to-hybrid table to get metadata;
   V2HMapMetadata* v2hmap =
       vaddr_range->GetV2HMapMetadata(fault_address - vaddr_range->address());
-  // 2. If v2h metadata shows the virt-address is in page-cache,
-  //    this means another thread has faulted on this page before and populated
-  //    this page. Nothing to do. return.
+  uint64_t  prot_size = PAGE_SIZE;
+  // 2. If v2h metadata shows the virt-address is in page-cache, there are
+  // two possible conditions:
+  // (1) read a page, then immediate write the same page.
+  // (2) two threads fault on the page at exactly the same time,
+  //     one thread unprotected it, and has populated this same page.
+  // It's very difficult to distinguish case 1 and 2.
+  // User is expected to implelent a locking at higher level to prevent
+  // case 2 from ever happening. So we only handle case 1.
   if (v2hmap->exist_page_cache) {
-    err("Potential race-condition:: virt-address %p already in page cache\n",
-        fault_address);
+    if (rwerror == 0) {
+      // A read fault on a page that's been unprotected. This is a sign
+      // of something went wrong.
+      dbg("Data-race:: virt-address %p already in page cache\n",
+          fault_address);
+    } else {
+      // a write fault. We assume it's case 1.
+      if (mprotect(fault_page, prot_size, PROT_WRITE) != 0) {
+        err("in sigsegv: read mprotect %p failed...\n", fault_page);
+        perror("mprotect error::  ");
+        _exit(0);
+      }
+      v2hmap->dirty_page_cache = 1;
+    }
     hmem->Unlock();
     return;
   }
-  uint64_t  prot_size = PAGE_SIZE;
   // Enable write to the fault page so we can populate it with data.
   if (mprotect(fault_page, prot_size, PROT_WRITE) != 0) {
     err("in sigsegv: read mprotect %p failed...\n", fault_page);

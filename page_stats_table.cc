@@ -181,19 +181,18 @@ uint64_t PageStatsTable::FindPagesWithMinCount(uint32_t pages_wanted,
   uint64_t relative_pte_node_number = pmds_[pmd_node_number].GetMinEntryIndex();
   uint64_t pte_node_number = (pmd_node_number << pmd_bits_) |
                               relative_pte_node_number;
-  dbg("min-access at pmd node %ld, pte node %ld\n", pmd_node_number, pte_node_number);
+#if 0
+  dbg("want evict %d flash-pages, min-access at pmd node %ld, "
+      "pte node %ld\n",
+      pages_wanted,
+      pmd_node_number,
+      pte_node_number);
+#endif
   // Get the "pages_wanted" pages with smallest count value.
   for (uint64_t i = 0; i < pages_wanted; ++i) {
     uint64_t pos = ptes_[pte_node_number].GetMinEntryIndex();
     pages->push_back((pmd_node_number << (pmd_bits_ + pte_bits_)) |
                     (pte_node_number << pte_bits_) | pos);
-    if (pages->back() == 12288) {
-      dbg("Get page %ld from pmd_node %ld, pte_node %ld, access = %ld\n",
-          pages->back(),
-          pmd_node_number,
-          pte_node_number,
-          AccessCount(pages->back()));
-    }
     //ptes_[pte_node_number].Set(pos, ptes_[pte_node_number].EntryValueLimit());
     ptes_[pte_node_number].Increase(pos, 1);
     pmds_[pmd_node_number].Increase(relative_pte_node_number, 1);

@@ -49,18 +49,18 @@ uint32_t PageCache::EvictItems() {
     PageCacheItem* olditem = (PageCacheItem*)queue_.front();
     queue_.pop();
     assert(olditem != NULL);
-    // TODO:
     // If the olditem contains dirty data, should flush this data to next
     // layer of cache.
     // There is a race-condition here:
-    // Thread 1 unproected page1 and is in the middle of writing to it.
-    // Thread 2 triggers a sigsegv and decides to release page1. Thread2 will
-    // copy page1 to next cache layer since page1 has "dirty" flag set.
+    // Thread 1 unproected page 1 and is in the middle of writing to it.
+    // Thread 2 triggers a sigsegv, and decides to release page 1 to make room
+    // in page-cache. Thread 2 will
+    // copy page 1 to next cache layer since page 1 has "dirty" flag set.
     // As a result, an incomplete copy of page1 is moved to next cache layer
     // while thread 1 is still writing to this page.
     //
     // The only thing we can do at sig handler to defend this race is to
-    // read-protect the page before copying, so thread1 will see a sigsegv
+    // read-protect the page before copying, so thread 1 will see a sigsegv
     // when writing to it and fall back sig handler to load it from
     // the lower cache layer.
     //   if olditem->dirty {
@@ -69,6 +69,9 @@ uint32_t PageCache::EvictItems() {
     //   }
     //   mprotect(olditem, NONE);
     //   madvise(olditem, dontneed);
+    //
+    // Another approach is to disallow two threads to exec the same
+    // sig handler by using a lock when entering the handler.
     hybrid_memory_->GetRAMCache()->AddPage(olditem->page,
                                            olditem->size,
                                            olditem->v2hmap->dirty_page_cache,
