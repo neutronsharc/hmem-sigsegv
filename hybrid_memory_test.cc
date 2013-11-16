@@ -70,7 +70,9 @@ static void* AccessHybridMemoryWriteThenRead(void *arg) {
       (uint64_t*)(task->buffer + (target_page_number << PAGE_BITS) + 16);
     clock_gettime(CLOCK_REALTIME, &tstart);
     //*p = i;
-    //assert(*p == 0xFFFFFFFFFFFFFFFF);
+    if (i < (1ULL << 19) - 10) {
+      assert(*p == 0xFFFFFFFFFFFFFFFF);
+    }
     *p = target_page_number;
     clock_gettime(CLOCK_REALTIME, &tend);
     latency_ns = (tend.tv_sec - tstart.tv_sec) * 1000000000 +
@@ -177,10 +179,10 @@ static void TestMultithreadAccess() {
   // Prepare hybrid-mem.
   uint64_t one_mega = 1024ULL * 1024;
   uint32_t num_hmem_instances = 1;
-  uint64_t page_buffer_size = one_mega * 1;
-  uint64_t ram_buffer_size = one_mega * 10;
-  uint64_t ssd_buffer_size = one_mega * 50;
-  uint64_t hdd_file_size = one_mega * 100;
+  uint64_t page_buffer_size = one_mega * 10;
+  uint64_t ram_buffer_size = one_mega * 200;
+  uint64_t ssd_buffer_size = one_mega * 16 * 128;
+  uint64_t hdd_file_size = one_mega * 5000;
   assert(InitHybridMemory("/tmp/hybridmemory/",
                           "hmem",
                           page_buffer_size,
@@ -198,7 +200,7 @@ static void TestMultithreadAccess() {
   assert(buffer != NULL);
   dbg("Use hmem-map()\n");
   uint64_t real_memory_pages = ram_buffer_size / 4096;
-  uint64_t access_memory_pages = ram_buffer_size / 4096 * 10 - 100;
+  uint64_t access_memory_pages = hdd_file_size / 4096;
 #else
   uint64_t number_pages = 1000ULL * 1000 * 10;
   uint64_t buffer_size = number_pages * 4096;
