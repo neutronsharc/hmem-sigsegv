@@ -100,6 +100,9 @@ class PageAllocationTable {
 
   uint64_t free_pages() const { return free_pages_; }
 
+  // Check if the given page number if free.
+  bool IsPageFree(uint64_t page);
+
  protected:
   // Indicate if this class has been initialized.
   bool ready_;

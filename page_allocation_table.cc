@@ -81,7 +81,7 @@ void PageAllocationTableNode::ReleasePages(uint64_t child_index,
   entries_[child_index] += free_pages;
   number_free_pages_ += free_pages;
   number_used_pages_ -= free_pages;
-  assert(number_free_pages_ <= number_total_pages_);
+  assert(number_free_pages_ + number_used_pages_ == number_total_pages_);
 }
 
 void PageAllocationTableNode::ShowStats() {
@@ -111,9 +111,9 @@ bool PageAllocationTable::Init(const std::string& name, uint64_t total_pages) {
     levels_ = 1;
     dbg("%s: PAT table has only 1 level: 0-0-%d\n", name.c_str(), bitmap_bits_);
   } else if (total_bits <= BITMAP_BITS + 8) {
+    bitmap_bits_ = BITMAP_BITS;
     pgd_bits_ = total_bits - BITMAP_BITS;
     pmd_bits_ = 0;
-    bitmap_bits_ = BITMAP_BITS;
     levels_ = 2;
     dbg("%s: PAT table has 2 level: %d-%d-%d\n",
         name.c_str(),
@@ -204,6 +204,7 @@ bool PageAllocationTable::Init(const std::string& name, uint64_t total_pages) {
       remain_pages -= pages_in_this_pmd_node;
     }
   }
+  SanityCheck();
 
   uint64_t cnt = 0;
   for (uint64_t i = 0; i < number_bitmaps_; ++i) {
@@ -220,13 +221,22 @@ bool PageAllocationTable::Init(const std::string& name, uint64_t total_pages) {
 }
 
 bool PageAllocationTable::SanityCheck() {
-  if (levels_ < 3) {
-    return true;
-  }
-  // Exam PGD.
+  assert(levels_ <= 3);
   uint64_t sum_free_pages = 0;
   uint64_t sum_used_pages = 0;
   uint64_t sum_total_pages = 0;
+  if (levels_ == 1) {
+    return true;
+  } else if (levels_ == 2) {
+    assert(number_bitmaps_ == pgd_.number_entries_);
+    for (uint64_t i = 0; i < number_bitmaps_; ++i) {
+      assert(bitmaps_[i].number_of_set_bits() == pgd_.entries_[i]);
+      sum_free_pages += bitmaps_[i].number_of_set_bits();
+    }
+    assert(sum_free_pages == pgd_.number_free_pages_);
+    return true;
+  }
+  // Exam PGD.
   assert(pgd_.number_entries_ == number_pmd_nodes_);
   for (uint64_t i = 0; i < pgd_.number_entries_; ++i) {
     sum_free_pages += pmds_[i].number_free_pages_;
@@ -295,8 +305,8 @@ bool PageAllocationTable::AllocatePages(
   } else if (levels_ == 2) {
     std::vector<uint64_t> bitmap_indices;
     std::vector<uint64_t> bitmap_free_pages;
-    assert(pgd_.GetPages(number_of_pages, &bitmap_indices, &bitmap_free_pages) ==
-        true);
+    assert(pgd_.GetPages(
+               number_of_pages, &bitmap_indices, &bitmap_free_pages) == true);
     for (uint64_t i = 0; i < bitmap_indices.size(); ++i) {
       uint64_t offset_in_pgd_node = bitmap_indices[i];
       uint64_t bitmap_index = bitmap_indices[i];
@@ -379,6 +389,22 @@ void PageAllocationTable::FreePage(uint64_t page) {
   }
   ++free_pages_;
   --used_pages_;
+}
+
+bool PageAllocationTable::IsPageFree(uint64_t page) {
+  assert(page >= 0 && page < total_pages_);
+  uint64_t offset_in_bitmap = page & bitmap_mask_;
+  if (levels_ == 1) {
+    return bitmaps_[0].get(offset_in_bitmap + 1) == 1;
+  } else if (levels_ == 2) {
+    uint64_t bitmap_index = page >> bitmap_bits_;
+    return bitmaps_[bitmap_index].get(offset_in_bitmap + 1) == 1;
+  } else {
+    uint64_t offset_in_pgd_node = (page >> (bitmap_bits_ + pmd_bits_)) & pgd_mask_;
+    uint64_t offset_in_pmd_node = (page >> bitmap_bits_) & pmd_mask_;
+    uint64_t bitmap_index = page >> bitmap_bits_;
+    return bitmaps_[bitmap_index].get(offset_in_bitmap + 1) == 1;
+  }
 }
 
 void PageAllocationTable::ShowStats() {

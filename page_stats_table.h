@@ -6,6 +6,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include <algorithm>
 #include <string>
 #include <vector>
 
@@ -32,12 +33,13 @@ class PageStatsTableNode {
     entries_ = entries;
     number_entries_ = number_entries;
     entry_value_limit_ = (1ULL << sizeof(T) * 8) - 1;
+    compare_entries_.assign(number_entries_, std::pair<T, uint64_t>(0, 0));
   }
 
   // Increate the value at entry at "index".
   void Increase(uint64_t index, T delta) {
     assert(index < number_entries_);
-    assert(delta < entry_value_limit_);
+    assert(delta <= entry_value_limit_);
     while (((uint64_t)entries_[index] + delta > entry_value_limit_)) {
       ShiftRight(1);
     }
@@ -88,7 +90,8 @@ class PageStatsTableNode {
     uint64_t last_entry_value = entries_[number_entries_ - 1];
     if (last_entry_needs_compensation_) {
       last_entry_value =
-          (uint64_t)(last_entry_compensation_ * last_entry_value);
+          std::min(entry_value_limit_,
+                   (uint64_t)(last_entry_compensation_ * last_entry_value));
     }
     if (min_value > last_entry_value) {
       min_index = number_entries_ - 1;
@@ -110,6 +113,16 @@ class PageStatsTableNode {
     printf("\n");
   }
 
+  void Dump(uint64_t start_index, uint64_t number_entries) {
+    assert((start_index < number_entries_) &&
+           (start_index + number_entries <= number_entries_));
+    printf("This stat-node has %ld entries.\n", number_entries_);
+    for (uint64_t i = start_index; i < start_index + number_entries; ++i) {
+      printf("[%ld]: %ld  ", i, (uint64_t)entries_[i]);
+    }
+    printf("\n");
+  }
+
   uint64_t EntryValueLimit() { return entry_value_limit_;}
 
   void AssignChildNodes(PageStatsTableNode* child_nodes) {
@@ -124,9 +137,34 @@ class PageStatsTableNode {
     last_entry_needs_compensation_ = needs_compensation;
   }
 
+  // Find the smallest N entries and return their in-node position in
+  // "position" array.
+  // "entries_wanted" is the number of entries needed to get.
+  void GetSmallestEntryPositions(uint32_t entries_wanted,
+                                 std::vector<uint64_t>* positions) {
+    assert(entries_wanted <= number_entries_);
+    for (uint64_t i = 0; i < number_entries_; ++i) {
+      compare_entries_[i].first = entries_[i];
+      compare_entries_[i].second = i;
+    }
+    std::sort(compare_entries_.begin(), compare_entries_.end(), sort_entries);
+    for (uint64_t i = 0; i < entries_wanted; ++i) {
+      positions->push_back(compare_entries_[i].second);
+    }
+  }
+
  protected:
+  // Sort all entries in ascending order of entry value.
+  static bool sort_entries(const std::pair<T, uint64_t>& e1,
+                           const std::pair<T, uint64_t>& e2) {
+    return e1.first <= e2.first;
+  }
   // Each entry records access stats of all pags at a child node.
   T* entries_;
+
+  // Use this list of pairs to sort all entries. Each pair represents
+  // an entry value and its position inside "entries_" array.
+  std::vector<std::pair<T, uint64_t> > compare_entries_;
 
   // Size of "entries_" array.
   uint64_t number_entries_;

@@ -16,7 +16,7 @@ int main(int argc, char **argv) {
   uint8_t buffer[4096];
 
   memset(buffer, 0xff, 4096);
-  uint64_t hdd_file_size = 1024UL * 1024 * 5000;
+  uint64_t hdd_file_size = 1024UL * 1024 * 100; //5000;
   uint64_t i;
   for (i = 0; i < hdd_file_size; i += 4096) {
     write(fd, buffer, 4096);

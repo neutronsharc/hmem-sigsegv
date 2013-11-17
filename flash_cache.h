@@ -15,8 +15,6 @@
 struct V2HMapMetadata;
 class HybridMemory;
 
-// Assume no more than 255 vaddress-ranges.
-#define INVALID_VADDRESS_RANGE_ID (0xff)
 
 // Flash-to-virtual-address mapping metadata for each flash-page.
 struct F2VMapItem {
@@ -25,6 +23,7 @@ struct F2VMapItem {
   // The cached virtual-pages's page-offset in the hosting vaddr-range.
   uint32_t vaddress_page_offset : 24;
 } __attribute__((__packed__));
+
 
 // Flash cache is the 3rd layer of cache that stores all
 // pages that overflows from 2st layer (RAM-cache).

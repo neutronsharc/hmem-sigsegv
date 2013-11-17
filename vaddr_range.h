@@ -13,6 +13,9 @@
 #include "avl.h"
 #include "hybrid_memory_const.h"
 
+// Assume 8 bits vaddress-ranges, usable vaddress-range-id from 0 to 254.
+#define INVALID_VADDRESS_RANGE_ID (0xff)
+
 // Vritual-address to hybrid-memory mapping metadata to record
 // mapping information for each virtual-page.
 struct V2HMapMetadata {
@@ -203,4 +206,7 @@ class VAddressRangeGroup {
 };
 
 bool InitVaddressRangeGroup(VAddressRangeGroup *vgroup);
+
+bool IsValidVAddressRangeId(uint32_t vaddress_range_id);
+
 #endif  // VADDR_RANGE_H_

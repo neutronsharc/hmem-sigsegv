@@ -11,6 +11,10 @@
 #include "vaddr_range.h"
 #include "utils.h"
 
+bool IsValidVAddressRangeId(uint32_t vaddress_range_id) {
+  return vaddress_range_id < INVALID_VADDRESS_RANGE_ID;
+}
+
 bool VAddressRange::Init(uint64_t size) {
   assert(is_active_ == false);
   size_ = RoundUpToPageSize(size);
@@ -134,12 +138,14 @@ VAddressRangeGroup::~VAddressRangeGroup() {
 }
 
 bool VAddressRangeGroup::Init() {
+  // TODO: now only support 8 bits vaddress-range-id [0, 255].
   uint32_t num_vaddr_ranges = MAX_VIRTUAL_ADDRESS_RANGES;
   vaddr_range_list_ = new VAddressRange[num_vaddr_ranges];
   assert(vaddr_range_list_ != NULL);
   for (uint32_t i = 0; i < num_vaddr_ranges; ++i) {
     vaddr_range_list_[i].set_vaddress_range_id(i);
   }
+  num_vaddr_ranges = INVALID_VADDRESS_RANGE_ID;  // from 0 to 255.
   total_vaddr_ranges_ = num_vaddr_ranges;
   free_vaddr_ranges_ = num_vaddr_ranges;
   inuse_vaddr_ranges_ = 0;

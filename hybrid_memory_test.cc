@@ -63,7 +63,7 @@ static void* AccessHybridMemoryWriteThenRead(void *arg) {
   HybridMemoryStats();
 #endif
   faults_step1 = NumberOfPageFaults();
-  // Write round.
+  // Write round: sequential write to every page.
   for (uint64_t i = 0; i < task->number_access; ++i) {
     target_page_number = task->begin_page + (i % task->number_pages);
     uint64_t* p =
@@ -179,10 +179,10 @@ static void TestMultithreadAccess() {
   // Prepare hybrid-mem.
   uint64_t one_mega = 1024ULL * 1024;
   uint32_t num_hmem_instances = 1;
-  uint64_t page_buffer_size = one_mega * 10;
-  uint64_t ram_buffer_size = one_mega * 200;
-  uint64_t ssd_buffer_size = one_mega * 16 * 128;
-  uint64_t hdd_file_size = one_mega * 5000;
+  uint64_t page_buffer_size = one_mega * 1;
+  uint64_t ram_buffer_size = one_mega * 10; //200;
+  uint64_t ssd_buffer_size = one_mega * 50; //16 * 128;
+  uint64_t hdd_file_size = one_mega * 100; //5000;
   assert(InitHybridMemory("/tmp/hybridmemory/",
                           "hmem",
                           page_buffer_size,
@@ -200,7 +200,7 @@ static void TestMultithreadAccess() {
   assert(buffer != NULL);
   dbg("Use hmem-map()\n");
   uint64_t real_memory_pages = ram_buffer_size / 4096;
-  uint64_t access_memory_pages = hdd_file_size / 4096;
+  uint64_t access_memory_pages = hdd_file_size / 4096 - 100;
 #else
   uint64_t number_pages = 1000ULL * 1000 * 10;
   uint64_t buffer_size = number_pages * 4096;

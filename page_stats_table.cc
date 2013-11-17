@@ -7,8 +7,6 @@
 #include <sys/ucontext.h>
 #include <unistd.h>
 
-#include <algorithm>
-
 #include "debug.h"
 #include "page_stats_table.h"
 #include "hybrid_memory_const.h"
@@ -189,11 +187,18 @@ uint64_t PageStatsTable::FindPagesWithMinCount(uint32_t pages_wanted,
       pte_node_number);
 #endif
   // Get the "pages_wanted" pages with smallest count value.
+  ptes_[pte_node_number].GetSmallestEntryPositions(pages_wanted, pages);
+  assert(pages->size() == pages_wanted);
   for (uint64_t i = 0; i < pages_wanted; ++i) {
-    uint64_t pos = ptes_[pte_node_number].GetMinEntryIndex();
-    pages->push_back((pmd_node_number << (pmd_bits_ + pte_bits_)) |
-                    (pte_node_number << pte_bits_) | pos);
-    //ptes_[pte_node_number].Set(pos, ptes_[pte_node_number].EntryValueLimit());
+    uint64_t pos = pages->at(i);
+    pages->at(i) = ((pmd_node_number << (pmd_bits_ + pte_bits_)) |
+                (pte_node_number << pte_bits_) | pos);
+    if (pages->at(i) >= 12788) {
+      dbg("Will release page %ld\n", pages->at(i));
+    }
+    if (pages->at(i) == 12788) {
+      ptes_[pte_node_number].Dump(pages->at(i) - 12288, 12);
+    }
     ptes_[pte_node_number].Increase(pos, 1);
     pmds_[pmd_node_number].Increase(relative_pte_node_number, 1);
     pgd_.Increase(pmd_node_number, 1);
