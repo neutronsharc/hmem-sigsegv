@@ -1,3 +1,7 @@
+// SSD-Assisted Hybrid Memory.
+// Author: Xiangyong Ouyang (neutronsharc@gmail.com)
+// Created on: 2011-11-11
+
 #include <assert.h>
 #include <fcntl.h>
 #include <stdint.h>
@@ -183,7 +187,6 @@ uint32_t FlashCache::EvictItems(uint32_t pages_to_evict) {
     // This evicted pages must have be associated to an owner
     // vaddress-range.
     F2VMapItem* f2vmap = &f2v_map_[flash_page_number];
-    //if (f2vmap->vaddress_range_id >= INVALID_VADDRESS_RANGE_ID) {
     if (!IsValidVAddressRangeId(f2vmap->vaddress_range_id)) {
       err("flash page %ld: its f2vmap->vaddr_rang_id is invalid: %d\n",
           flash_page_number, f2vmap->vaddress_range_id);
@@ -204,12 +207,6 @@ uint32_t FlashCache::EvictItems(uint32_t pages_to_evict) {
 
   for (uint32_t i = 0; i < evicted_pages; ++i) {
     uint64_t flash_page_number = pages[i];
-    if (flash_page_number >= 12784) {
-      dbg("flash-page %ld: will be freed, current state = %d, %ld free pages\n",
-          flash_page_number,
-          page_allocate_table_.IsPageFree(flash_page_number),
-          page_allocate_table_.free_pages());
-    }
     if (page_allocate_table_.IsPageFree(flash_page_number)) {
       err("will free flash page %ld but it's already freed!\n",
           flash_page_number);
@@ -224,12 +221,6 @@ uint32_t FlashCache::EvictItems(uint32_t pages_to_evict) {
       assert(0);
     }
     page_allocate_table_.FreePage(flash_page_number);
-    if (flash_page_number >= 12784) {
-      dbg("flash-page %ld: has been freed, now %ld free pages\n",
-          flash_page_number,
-          page_allocate_table_.free_pages());
-    }
-    //if (f2vmap->vaddress_range_id >= INVALID_VADDRESS_RANGE_ID) {
     VAddressRange* vaddress_range =
         GetVAddressRangeFromId(f2vmap->vaddress_range_id);
     uint64_t vaddress_page_number = f2vmap->vaddress_page_offset;
@@ -287,11 +278,6 @@ bool FlashCache::AddPage(void* page,
       dbg("^^^^^  pos 2: flash-page %ld for virt-page %ld, vaddr-range %d\n",
           flash_page_number, vaddress_page_offset, vaddress_range_id);
     }
-    if (flash_page_number >=12784) {
-      dbg("flash-page %ld: was just allocated\n", flash_page_number);
-    }
-    //assert(f2v_map_[flash_page_number].vaddress_range_id ==
-    //       INVALID_VADDRESS_RANGE_ID);
     assert(
         !IsValidVAddressRangeId(f2v_map_[flash_page_number].vaddress_range_id));
   }

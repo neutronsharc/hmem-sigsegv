@@ -1,3 +1,7 @@
+// SSD-Assisted Hybrid Memory.
+// Author: Xiangyong Ouyang (neutronsharc@gmail.com)
+// Created on: 2011-11-11
+
 #ifndef PAGE_CACHE_H_
 #define PAGE_CACHE_H_
 

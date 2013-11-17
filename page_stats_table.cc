@@ -1,3 +1,7 @@
+// SSD-Assisted Hybrid Memory.
+// Author: Xiangyong Ouyang (neutronsharc@gmail.com)
+// Created on: 2011-11-11
+
 #include <assert.h>
 #include <signal.h>
 #include <stdio.h>
@@ -193,12 +197,6 @@ uint64_t PageStatsTable::FindPagesWithMinCount(uint32_t pages_wanted,
     uint64_t pos = pages->at(i);
     pages->at(i) = ((pmd_node_number << (pmd_bits_ + pte_bits_)) |
                 (pte_node_number << pte_bits_) | pos);
-    if (pages->at(i) >= 12788) {
-      dbg("Will release page %ld\n", pages->at(i));
-    }
-    if (pages->at(i) == 12788) {
-      ptes_[pte_node_number].Dump(pages->at(i) - 12288, 12);
-    }
     ptes_[pte_node_number].Increase(pos, 1);
     pmds_[pmd_node_number].Increase(relative_pte_node_number, 1);
     pgd_.Increase(pmd_node_number, 1);

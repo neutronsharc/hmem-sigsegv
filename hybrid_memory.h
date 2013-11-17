@@ -1,3 +1,7 @@
+// SSD-Assisted Hybrid Memory.
+// Author: Xiangyong Ouyang (neutronsharc@gmail.com)
+// Created on: 2011-11-11
+
 #ifndef HYBRID_MEMORY_H_
 #define HYBRID_MEMORY_H_
 
@@ -76,7 +80,7 @@ class HybridMemory {
 // this group share a same signal handler.
 class HybridMemoryGroup {
  public:
-  HybridMemoryGroup() {}
+  HybridMemoryGroup() : is_ready_(false) {}
   virtual ~HybridMemoryGroup();
 
   bool Init(const std::string &ssd_dirpath,
@@ -98,6 +102,8 @@ class HybridMemoryGroup {
   }
 
  protected:
+  bool is_ready_;
+
   // Als SSD files of this hmem-group are stored in this dir.
   std::string ssd_dirpath_;
   std::string hmem_group_name_;

@@ -1,3 +1,7 @@
+// SSD-Assisted Hybrid Memory.
+// Author: Xiangyong Ouyang (neutronsharc@gmail.com)
+// Created on: 2011-11-11
+
 #ifndef LRU_LIST_H_
 #define LRU_LIST_H_
 

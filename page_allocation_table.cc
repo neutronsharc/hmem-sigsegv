@@ -1,3 +1,7 @@
+// SSD-Assisted Hybrid Memory.
+// Author: Xiangyong Ouyang (neutronsharc@gmail.com)
+// Created on: 2011-11-11
+
 #include <assert.h>
 #include <signal.h>
 #include <stdio.h>
@@ -110,7 +114,7 @@ bool PageAllocationTable::Init(const std::string& name, uint64_t total_pages) {
     bitmap_bits_ = total_bits;
     levels_ = 1;
     dbg("%s: PAT table has only 1 level: 0-0-%d\n", name.c_str(), bitmap_bits_);
-  } else if (total_bits <= BITMAP_BITS + 8) {
+  } else if (total_bits <= BITMAP_BITS + 4) {
     bitmap_bits_ = BITMAP_BITS;
     pgd_bits_ = total_bits - BITMAP_BITS;
     pmd_bits_ = 0;
@@ -400,8 +404,6 @@ bool PageAllocationTable::IsPageFree(uint64_t page) {
     uint64_t bitmap_index = page >> bitmap_bits_;
     return bitmaps_[bitmap_index].get(offset_in_bitmap + 1) == 1;
   } else {
-    uint64_t offset_in_pgd_node = (page >> (bitmap_bits_ + pmd_bits_)) & pgd_mask_;
-    uint64_t offset_in_pmd_node = (page >> bitmap_bits_) & pmd_mask_;
     uint64_t bitmap_index = page >> bitmap_bits_;
     return bitmaps_[bitmap_index].get(offset_in_bitmap + 1) == 1;
   }

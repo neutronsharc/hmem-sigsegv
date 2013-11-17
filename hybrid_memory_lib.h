@@ -1,3 +1,7 @@
+// SSD-Assisted Hybrid Memory.
+// Author: Xiangyong Ouyang (neutronsharc@gmail.com)
+// Created on: 2011-11-11
+
 #ifndef HYBRID_MEMORY_LIB_H_
 #define HYBRID_MEMORY_LIB_H_
 

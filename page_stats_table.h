@@ -1,3 +1,7 @@
+// SSD-Assisted Hybrid Memory.
+// Author: Xiangyong Ouyang (neutronsharc@gmail.com)
+// Created on: 2011-11-11
+
 #ifndef PAGE_STATS_TABLE_
 #define PAGE_STATS_TABLE_
 
@@ -33,7 +37,8 @@ class PageStatsTableNode {
     entries_ = entries;
     number_entries_ = number_entries;
     entry_value_limit_ = (1ULL << sizeof(T) * 8) - 1;
-    compare_entries_.assign(number_entries_, std::pair<T, uint64_t>(0, 0));
+    compare_entries_.assign(number_entries_,
+                            std::pair<uint64_t, uint64_t>(0, 0));
   }
 
   // Increate the value at entry at "index".
@@ -143,11 +148,13 @@ class PageStatsTableNode {
   void GetSmallestEntryPositions(uint32_t entries_wanted,
                                  std::vector<uint64_t>* positions) {
     assert(entries_wanted <= number_entries_);
+    assert(entries_wanted <= compare_entries_.size());
     for (uint64_t i = 0; i < number_entries_; ++i) {
       compare_entries_[i].first = entries_[i];
       compare_entries_[i].second = i;
     }
     std::sort(compare_entries_.begin(), compare_entries_.end(), sort_entries);
+    positions->clear();
     for (uint64_t i = 0; i < entries_wanted; ++i) {
       positions->push_back(compare_entries_[i].second);
     }
@@ -155,16 +162,17 @@ class PageStatsTableNode {
 
  protected:
   // Sort all entries in ascending order of entry value.
-  static bool sort_entries(const std::pair<T, uint64_t>& e1,
-                           const std::pair<T, uint64_t>& e2) {
-    return e1.first <= e2.first;
+  static bool sort_entries(const std::pair<uint64_t, uint64_t>& e1,
+                           const std::pair<uint64_t, uint64_t>& e2) {
+    // This compare must be a strict weak ordering.
+    return e1.first < e2.first;
   }
   // Each entry records access stats of all pags at a child node.
   T* entries_;
 
   // Use this list of pairs to sort all entries. Each pair represents
   // an entry value and its position inside "entries_" array.
-  std::vector<std::pair<T, uint64_t> > compare_entries_;
+  std::vector<std::pair<uint64_t, uint64_t> > compare_entries_;
 
   // Size of "entries_" array.
   uint64_t number_entries_;

@@ -22,11 +22,11 @@ bool HybridMemory::Init(const std::string &ssd_dirpath,
   assert(ready_ == false);
   page_buffer_size_ = page_buffer_size;
   ram_buffer_size_ = ram_buffer_size;
-  ssd_buffer_size_ = ssd_buffer_size;
+  // Align flash cache size to 1MB.
+  ssd_buffer_size_ = (ssd_buffer_size >> 20) << 20;
+  assert(ssd_buffer_size_ > 0);
   hmem_instance_id_ = hmem_intance_id;
   pthread_mutex_init(&lock_, NULL);
-
-  // TODO: Prepare cache layers.
 
   char name[64];
   sprintf(name, "hmem-%d", hmem_intance_id);
@@ -42,7 +42,6 @@ bool HybridMemory::Init(const std::string &ssd_dirpath,
 }
 
 bool HybridMemory::Release() {
-  // TODO: release resources.
   if (ready_) {
     page_cache_.Release();
     ram_cache_.Release();
@@ -61,7 +60,7 @@ void HybridMemory::Unlock() {
 }
 
 HybridMemoryGroup::~HybridMemoryGroup() {
-  // TODO: release resources.
+  Release();
 }
 
 bool HybridMemoryGroup::Init(const std::string& ssd_dirpath,
@@ -87,12 +86,15 @@ bool HybridMemoryGroup::Init(const std::string& ssd_dirpath,
       return false;
     }
   }
+  is_ready_ = true;
   return true;
 }
 
 bool HybridMemoryGroup::Release() {
-  for (uint32_t i = 0; i < number_hmem_instances_; ++i) {
-    hmem_instances_[i].Release();
+  if (is_ready_) {
+    for (uint32_t i = 0; i < number_hmem_instances_; ++i) {
+      hmem_instances_[i].Release();
+    }
   }
 }
 
