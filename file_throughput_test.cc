@@ -15,17 +15,17 @@
 
 int main(int argc, char **argv) {
   uint64_t one_mega = 1024UL * 1024;
-  uint64_t file_size = one_mega * 100;
+  uint64_t file_size = one_mega * 50;
   uint64_t total_file_pages = file_size / 4096;
-  uint8_t buffer[4096];
 
-  uint64_t repeats = total_file_pages * 1;
   std::string filename = "/tmp/hybridmemory/hddfile";
-
-  bool sequential = false;
-
   int fd = open(filename.c_str(), O_RDWR | O_DIRECT, 0666);
   assert(fd > 0);
+
+  uint64_t page_size = 4096;
+  uint64_t alignment = page_size;
+  uint8_t* buffer;
+  assert(posix_memalign((void**)&buffer, alignment, page_size) == 0);
 
   struct timespec tstart, tend;
   clock_gettime(CLOCK_REALTIME, &tstart);
@@ -33,6 +33,14 @@ int main(int argc, char **argv) {
 
   uint64_t latency_ns = 0;
   uint64_t max_read_latency_ns = 0;
+
+  bool sequential = true;
+  printf("Will run %s workload on file range: [0 - %ld) %ld pages\n",
+         sequential ? "sequential" : "random",
+         file_size,
+         total_file_pages);
+
+  uint64_t repeats = total_file_pages * 1;
 
   struct timespec sum_tstart, sum_tend;
   clock_gettime(CLOCK_REALTIME, &sum_tstart);
@@ -43,7 +51,7 @@ int main(int argc, char **argv) {
     } else {
       target_page = rand_r(&rand_seed) % total_file_pages;
     }
-    uint64_t to_read = 4096;
+    uint64_t to_read = page_size;
     clock_gettime(CLOCK_REALTIME, &tstart);
     assert(pread(fd, buffer, to_read, target_page << 12) == to_read);
     clock_gettime(CLOCK_REALTIME, &tend);
@@ -58,11 +66,13 @@ int main(int argc, char **argv) {
     }
   }
   clock_gettime(CLOCK_REALTIME, &sum_tend);
+  close(fd);
+  free(buffer);
   uint64_t total_usec = (sum_tend.tv_sec - sum_tstart.tv_sec) * 1000000 +
                         (sum_tend.tv_nsec - sum_tstart.tv_nsec) / 1000;
   printf(
       "workload: \"%s\", %ld ops, %f seconds, avg-lat = %ld usec, "
-      "throughput= %ld /sec, max-lat = %ld usec\n",
+      "op throughput= %ld ops/sec, max-lat = %ld usec\n",
       sequential ? "sequential" : "random",
       repeats,
       total_usec / 1000000.0,

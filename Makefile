@@ -6,7 +6,8 @@ INC = -I. -I/home/ouyangx/tools/install-libevent-2.0.10/include/
 CFLAGS = -c ${INC}
 LDFLAGS = -lpthread -pthread -lrt
 
-exes = newhmem
+exes = newhmem file_throughput_test
+
 tests = vaddr_range_test hash_table_test free_list_test lru_list_test bitmap_test \
 	page_allocation_table_test page_stats_table_test
 
@@ -38,6 +39,9 @@ page_allocation_table_test : page_allocation_table_test.o page_allocation_table.
 	${CC} ${INC} $^ -o $@ ${LDFLAGS}
 
 page_stats_table_test : page_stats_table_test.o page_stats_table.o
+	${CC} ${INC} $^ -o $@ ${LDFLAGS}
+
+file_throughput_test : file_throughput_test.cc
 	${CC} ${INC} $^ -o $@ ${LDFLAGS}
 
 %.o: %.cc *.h
