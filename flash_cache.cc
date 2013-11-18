@@ -129,6 +129,8 @@ uint32_t FlashCache::MigrateToHDD(
           i,
           virtual_page_address);
     } else if (v2hmap->dirty_ram_cache) {
+      // This flash page has a copy in RAM-cache.
+      // No need to flush it to hdd file.
       assert(v2hmap->exist_ram_cache);
       RAMCacheItem* ram_cache_item =
           hybrid_memory_->GetRAMCache()->GetItem(virtual_page_address);
@@ -145,6 +147,9 @@ uint32_t FlashCache::MigrateToHDD(
                     io_size,
                     hdd_file_offset) == io_size);
       hybrid_memory_->GetRAMCache()->Remove(ram_cache_item);
+      v2hmap->exist_hdd_file = 1;
+      v2hmap->exist_ram_cache = 0;
+      v2hmap->dirty_ram_cachee = 0;
 #endif
     } else if (v2hmap->dirty_flash_cache) {
       assert(v2hmap->exist_flash_cache);
@@ -153,9 +158,10 @@ uint32_t FlashCache::MigrateToHDD(
       aux_buffer_list_.pop_back();
       if (flash_page_number == 12288) {
         dbg("flash-page %ld: virt-page-number %ld: exist-dirty in flash-cache, "
-            "moved to hdd\n",
+            "moved to hdd position %ld\n",
             flash_page_number,
-            vaddress_page_number);
+            vaddress_page_number,
+            hdd_file_offset);
       }
       // TODO: use async-io to issue multiple (read-flash, write-hdd) chains.
       assert(pread(flash_fd_,
@@ -167,8 +173,10 @@ uint32_t FlashCache::MigrateToHDD(
                     io_size,
                     hdd_file_offset) == io_size);
       aux_buffer_list_.push_back(data_buffer);
+
       v2hmap->dirty_flash_cache = 0;
       v2hmap->exist_flash_cache = 0;
+      v2hmap->exist_hdd_file = 1;
     }
   }
   return flash_pages_writeto_hdd.size();
@@ -228,6 +236,7 @@ uint32_t FlashCache::EvictItems(uint32_t pages_to_evict) {
         vaddress_range->GetV2HMapMetadata(vaddress_page_number << PAGE_BITS);
     v2hmap->dirty_flash_cache = 0;
     v2hmap->exist_flash_cache = 0;
+
     f2vmap->vaddress_range_id = INVALID_VADDRESS_RANGE_ID;
     f2vmap->vaddress_page_offset = 0;
   }
@@ -240,11 +249,13 @@ bool FlashCache::AddPage(void* page,
                          V2HMapMetadata* v2hmap,
                          uint32_t vaddress_range_id,
                          void* virtual_page_address) {
-  //assert(vaddress_range_id < INVALID_VADDRESS_RANGE_ID);
   assert(IsValidVAddressRangeId(vaddress_range_id));
   assert(obj_size == PAGE_SIZE);
   uint64_t vaddress_page_offset =
       GetPageOffsetInVAddressRange(vaddress_range_id, virtual_page_address);
+  V2HMapMetadata* v2h_map = GetV2HMap(vaddress_range_id, vaddress_page_offset);
+  assert(v2hmap == v2h_map);
+
   // A flash-page number relative to the beginning of flash-cache file.
   uint64_t flash_page_number;
   if (v2hmap->exist_flash_cache) {
@@ -275,8 +286,11 @@ bool FlashCache::AddPage(void* page,
       }
     }
     if (flash_page_number == 12288) {
-      dbg("^^^^^  pos 2: flash-page %ld for virt-page %ld, vaddr-range %d\n",
-          flash_page_number, vaddress_page_offset, vaddress_range_id);
+      dbg("^^^^^  pos 2: alloc flash-page %ld for virt-page %ld, "
+          "vaddr-range %d\n",
+          flash_page_number,
+          vaddress_page_offset,
+          vaddress_range_id);
     }
     assert(
         !IsValidVAddressRangeId(f2v_map_[flash_page_number].vaddress_range_id));
@@ -298,17 +312,18 @@ bool FlashCache::AddPage(void* page,
   f2v_map_[flash_page_number].vaddress_page_offset = vaddress_page_offset;
   f2v_map_[flash_page_number].vaddress_range_id = vaddress_range_id;
 
-  V2HMapMetadata* v2h_map = GetV2HMap(vaddress_range_id, vaddress_page_offset);
-  assert(v2hmap == v2h_map);
   v2hmap->exist_flash_cache = 1;
   v2hmap->dirty_flash_cache = is_dirty;
   v2hmap->flash_page_offset = flash_page_number;
   page_stats_table_.IncreaseAccessCount(flash_page_number, 1);
   if (flash_page_number == 12288) {
-    dbg("flash page %ld: access-count=%ld, vaddress-range-id=%d\n",
+    dbg("flash page %ld <=> virt-page %ld: dirty=%d, access-count=%ld, "
+        "vaddress-range-id=%d\n",
         flash_page_number,
+        vaddress_page_offset,
+        is_dirty,
         page_stats_table_.AccessCount(flash_page_number),
-        f2v_map_[flash_page_number].vaddress_range_id);
+        vaddress_range_id);
   }
   return true;
 }

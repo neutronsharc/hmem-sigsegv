@@ -29,6 +29,7 @@ class FreeList {
       : ready_(false),
         all_objects_(NULL),
         list_(NULL),
+        objects_data_(NULL),
         available_objects_(0),
         total_objects_(0) {}
 
@@ -104,13 +105,15 @@ bool FreeList<T>::Init(const std::string& name,
         name.c_str(),
         total_objects_datasize,
         total_objects);
-    assert(posix_memalign((void**)&objects_data_, alignment, total_objects_datasize) ==
-           0);
+    assert(posix_memalign(
+               (void**)&objects_data_, alignment, total_objects_datasize) == 0);
   }
   if (pin_memory_) {
     assert(mlock(all_objects_, total_objects_size) == 0);
     assert(mlock(list_, total_list_size) == 0);
-    assert(mlock(objects_data_, total_objects_datasize) == 0);
+    if (object_datasize_ > 0) {
+      assert(mlock(objects_data_, total_objects_datasize) == 0);
+    }
   }
 
   uint64_t data = (uint64_t)objects_data_;

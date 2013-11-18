@@ -11,12 +11,12 @@
 int main(int argc, char **argv) {
   printf("size of pthread_mutex = %ld\n", sizeof(pthread_mutex_t));
 
-  char *hdd_filename = "/tmp/hybridmemory/hddfile";
-  int fd = open(hdd_filename, O_CREAT|O_RDWR, 0666);
+  const char *hdd_filename = "/tmp/hybridmemory/hddfile";
+  int fd = open(hdd_filename, O_CREAT | O_LARGEFILE |O_RDWR, 0666);
   uint8_t buffer[4096];
 
   memset(buffer, 0xff, 4096);
-  uint64_t hdd_file_size = 1024UL * 1024 * 100; //5000;
+  uint64_t hdd_file_size = 1024UL * 1024 * 150;
   uint64_t i;
   for (i = 0; i < hdd_file_size; i += 4096) {
     write(fd, buffer, 4096);

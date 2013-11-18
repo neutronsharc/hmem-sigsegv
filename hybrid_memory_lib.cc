@@ -133,6 +133,7 @@ static bool LoadDataFromHybridMemory(void* fault_page,
                                      VAddressRange* vaddr_range,
                                      HybridMemory* hmem,
                                      V2HMapMetadata* v2hmap) {
+  assert(!v2hmap->exist_page_cache);
   if (v2hmap->exist_ram_cache) {
     // The virt-address has a corresponding copy in RAM cache.
     // Find the target data from caching layer, copy target
@@ -214,11 +215,12 @@ static void SigSegvAction(int sig, siginfo_t* sig_info, void* ucontext) {
   // Find the parent vaddr_range this address belongs to.
   // If this fault-address doesn't belong to any vaddr_range, this fault
   // is caused by accessing address outside of hybrid-memory.
-  // We should relay this signal to default handler.
-  VAddressRange* vaddr_range =
-      vaddr_range_group.FindVAddressRange(fault_page);
+  // Relay this signal to default handler.
+  VAddressRange* vaddr_range = vaddr_range_group.FindVAddressRange(fault_page);
   if (vaddr_range == NULL) {
-    err("address=%p not within hybrid-memory range.\n", fault_address);
+    err("address=%p not within hybrid-memory range, "
+        "forward to default sigsegv.\n",
+        fault_address);
     signal(SIGSEGV, SIG_DFL);
     kill(getpid(), SIGSEGV);
     return;
@@ -237,6 +239,7 @@ static void SigSegvAction(int sig, siginfo_t* sig_info, void* ucontext) {
   // (1) read a page, then immediate write the same page.
   // (2) two threads fault on the page at exactly the same time,
   //     one thread unprotected it, and has populated this same page.
+  //     This is a serious data race with regular virtual memory.
   // It's very difficult to distinguish case 1 and 2.
   // User is expected to implelent a locking at higher level to prevent
   // case 2 from ever happening. So we only handle case 1.

@@ -65,13 +65,20 @@ bool VAddressRange::Init(uint64_t size,
         hdd_filename.c_str());
     return false;
   }
-  if (hdd_file_offset + size > hdd_file_stat.st_size) {
-    err("VAddressRange: virtual-space-size %ld + hdd-file-offset %ld "
-        "> file size %ld\n",
+  bool should_truncate = false;
+  uint64_t hddfile_old_size = hdd_file_stat.st_size;
+  uint64_t hddfile_new_size = 0;
+  if (hdd_file_offset + size > hddfile_old_size) {
+    should_truncate = true;
+    hddfile_new_size = hdd_file_offset + size;
+    err("VAddressRange with backing file %s: "
+        "virtual-space-size %ld + hdd-file-offset %ld "
+        "> file size %ld, will truncate this file to new size %ld\n",
+        hdd_filename.c_str(),
         size,
         hdd_file_offset,
-        hdd_file_stat.st_size);
-    return false;
+        hddfile_old_size,
+        hddfile_new_size);
   }
   if (Init(size) == false) {
     err("Cannot init\n");
@@ -79,15 +86,26 @@ bool VAddressRange::Init(uint64_t size,
   }
   hdd_file_fd_ = open(hdd_filename.c_str(), O_RDWR | O_DIRECT, 0666);
   assert(hdd_file_fd_ > 0);
+  if (should_truncate) {
+    assert(ftruncate(hdd_file_fd_, hddfile_new_size) == 0);
+  }
   hdd_file_offset_ = hdd_file_offset;
   hdd_filename_ = hdd_filename;
   has_backing_hdd_file_ = true;
-  for (uint64_t i = 0; i < v2h_map_size_; ++i) {
-    v2h_map_[i].exist_hdd_file = 1;
+  if (hddfile_old_size > hdd_file_offset) {
+    uint64_t vaddress_pages_with_old_hddfile_back = std::min<uint64_t>(
+        (hddfile_old_size - hdd_file_offset + PAGE_SIZE - 1) / PAGE_SIZE,
+        number_pages_);
+    // for (uint64_t i = 0; i < v2h_map_size_; ++i) {
+    for (uint64_t i = 0; i < vaddress_pages_with_old_hddfile_back; ++i) {
+      v2h_map_[i].exist_hdd_file = 1;
+    }
+    dbg("VAddressRange %d: first %ld pages have init backing in hdd file\n",
+        vaddress_range_id(), vaddress_pages_with_old_hddfile_back);
   }
 
-  dbg("Has opened backing hdd file %s at offst %ld\n",
-      hdd_filename.c_str(), hdd_file_offset_);
+  dbg("VAddressRange %d: opened backing hdd file %s at offset %ld\n",
+      vaddress_range_id(), hdd_filename.c_str(), hdd_file_offset_);
   is_active_ = true;
   return is_active_;
 }
