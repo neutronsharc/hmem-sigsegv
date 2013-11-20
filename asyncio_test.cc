@@ -48,20 +48,23 @@ static void TestFileAsyncIo() {
   const char *source_filename = "/tmp/hybridmemory/source";
   const char *target_filename = "/tmp/hybridmemory/target";
 
-  int soruce_fd =
+  int source_fd =
       open(source_filename, O_CREAT | O_TRUNC | O_RDWR | O_DIRECT, 0666);
   int target_fd =
       open(target_filename, O_CREAT | O_TRUNC | O_RDWR | O_DIRECT, 0666);
+  assert(source_fd > 0);
+  assert(target_fd > 0);
 
   struct timespec ts;
   clock_gettime(CLOCK_REALTIME, &ts);
   uint32_t rand_seed = ts.tv_nsec;
 
   AsyncIOManager aio_manager;
+  uint64_t aio_max_nr = 256;
   //aio_manager.Init(MAX_OUTSTANDING_ASYNCIO);
-  aio_manager.Init(16);
+  aio_manager.Init(aio_max_nr);
 
-  uint64_t file_size = 4096UL * 16;//1024UL * 1024 * 1; //* 100;
+  uint64_t file_size = 4096UL * 128;//1024UL * 1024 * 1; //* 100;
   uint64_t iosize = 4096;
 
   uint64_t number_requests = 0;
@@ -74,11 +77,12 @@ static void TestFileAsyncIo() {
     AsyncIORequest *request = aio_manager.GetRequest();
     while (!request) {
       usleep(1000);
+      number_completions += aio_manager.Poll(1);
       request = aio_manager.GetRequest();
     }
     uint8_t* buffer = databuffer + pos;
     memset(buffer, rand_r(&rand_seed), 4096);
-    request->Prepare(soruce_fd, buffer, iosize, pos, WRITE);
+    request->Prepare(source_fd, buffer, iosize, pos, WRITE);
     assert(aio_manager.Submit(request));
     ++number_requests;
     number_completions += aio_manager.Poll(1);
@@ -100,7 +104,7 @@ static void TestFileAsyncIo() {
       sleep(1);
       request = aio_manager.GetRequest();
     }
-    request->Prepare(soruce_fd, databuffer + pos, iosize, pos, READ);
+    request->Prepare(source_fd, databuffer + pos, iosize, pos, READ);
 
     AsyncIOInfo* aio_info = new AsyncIOInfo();
     aio_info->file_handle_ = target_fd;
@@ -114,10 +118,14 @@ static void TestFileAsyncIo() {
     ++copy_read_requests;
     copy_completions += aio_manager.Poll(1);
   }
+  dbg("Copy from %s to %s:  %ld copy reads rqsts, %ld completions\n",
+      source_filename, target_filename, copy_read_requests, copy_completions);
   while (copy_completions < (copy_read_requests + copy_write_requests)) {
     copy_completions += aio_manager.Wait(
         copy_read_requests + copy_write_requests - copy_completions, NULL);
   }
+  dbg("Copy finished. %ld copy reads rqsts, %ld copy write rqst, %ld completions\n",
+      copy_read_requests, copy_write_requests, copy_completions);
 }
 
 int main(int argc, char **argv) {

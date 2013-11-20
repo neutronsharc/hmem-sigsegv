@@ -108,6 +108,7 @@ bool FreeList<T>::Init(const std::string& name,
                           total_objects_size) == 0);
     assert(posix_memalign((void **)&list_, alignment, total_list_size) == 0);
   } else {
+    dbg("FreeList<>: allocate %ld class objects with new[]\n", total_objects);
     all_objects_ = new T[total_objects];
     assert(all_objects_);
     list_ = new T*[total_objects];

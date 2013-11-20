@@ -15,14 +15,14 @@
 #include "free_list.h"
 
 // Default max requests defined at "/sys/block/sda/queue/nr_requests".
-#define MAX_OUTSTANDING_ASYNCIO (128)
+#define MAX_OUTSTANDING_ASYNCIO (1024)
 
 class AsyncIORequest;
 
 // This class implements asynchronous I/O managements for file operations.
 class AsyncIOManager {
  public:
-  AsyncIOManager() : is_ready_(false) {}
+  AsyncIOManager() : is_ready_(false), ioctx_(0) {}
   virtual ~AsyncIOManager() { Release(); }
 
   bool Release();
