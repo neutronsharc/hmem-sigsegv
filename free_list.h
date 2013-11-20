@@ -118,8 +118,8 @@ bool FreeList<T>::Init(const std::string& name,
 
   uint64_t data = (uint64_t)objects_data_;
   for (uint32_t i = 0; i < total_objects_; ++i) {
-    all_objects_[i].data = (void*)data;
     if (object_datasize_ > 0) {
+      all_objects_[i].data = (void *)data;
       data += object_datasize_;
     }
     list_[i] = &all_objects_[i];

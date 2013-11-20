@@ -256,7 +256,7 @@ bool FlashCache::AddPage(void* page,
   V2HMapMetadata* v2h_map = GetV2HMap(vaddress_range_id, vaddress_page_offset);
   assert(v2hmap == v2h_map);
 
-  // A flash-page number relative to the beginning of flash-cache file.
+  // A "flash-page number" is relative to the beginning of flash-cache file.
   uint64_t flash_page_number;
   if (v2hmap->exist_flash_cache) {
     assert(v2hmap->flash_page_offset < total_flash_pages_);
