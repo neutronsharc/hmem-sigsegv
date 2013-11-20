@@ -14,7 +14,8 @@
 
 #include "free_list.h"
 
-#define MAX_OUTSTANDING_ASYNCIO (256)
+// Default max requests defined at "/sys/block/sda/queue/nr_requests".
+#define MAX_OUTSTANDING_ASYNCIO (128)
 
 class AsyncIORequest;
 

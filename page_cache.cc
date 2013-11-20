@@ -22,11 +22,13 @@ bool PageCache::Init(HybridMemory* hmem,
                      uint64_t max_cache_size) {
   max_cache_size_ = RoundUpToPageSize(max_cache_size);
   assert(max_cache_size_ > 0);
+  bool page_align = true;
   bool pin_memory = true;
   uint32_t payload_data = 0;
   assert(item_list_.Init(name + "-itemlist",
                          max_cache_size_ >> PAGE_BITS,
                          payload_data,
+                         page_align,
                          pin_memory) == true);
   hybrid_memory_ = hmem;
   name_ = name;

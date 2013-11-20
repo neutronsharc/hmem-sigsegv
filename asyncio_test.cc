@@ -48,8 +48,10 @@ static void TestFileAsyncIo() {
   const char *source_filename = "/tmp/hybridmemory/source";
   const char *target_filename = "/tmp/hybridmemory/target";
 
-  int soruce_fd = open(source_filename, O_CREAT | O_RDWR | O_DIRECT, 0666);
-  int target_fd = open(target_filename, O_CREAT | O_RDWR | O_DIRECT, 0666);
+  int soruce_fd =
+      open(source_filename, O_CREAT | O_TRUNC | O_RDWR | O_DIRECT, 0666);
+  int target_fd =
+      open(target_filename, O_CREAT | O_TRUNC | O_RDWR | O_DIRECT, 0666);
 
   struct timespec ts;
   clock_gettime(CLOCK_REALTIME, &ts);
@@ -57,9 +59,9 @@ static void TestFileAsyncIo() {
 
   AsyncIOManager aio_manager;
   //aio_manager.Init(MAX_OUTSTANDING_ASYNCIO);
-  aio_manager.Init(128);
+  aio_manager.Init(16);
 
-  uint64_t file_size = 1024UL * 1024 * 1; //* 100;
+  uint64_t file_size = 4096UL * 16;//1024UL * 1024 * 1; //* 100;
   uint64_t iosize = 4096;
 
   uint64_t number_requests = 0;

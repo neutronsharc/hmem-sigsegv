@@ -18,9 +18,10 @@ static void TestFreeList() {
   FreeList<MyObj> list;
   uint32_t number_objects = 1000;
   uint32_t payload_size = 4096;
+  bool page_align = true;
   bool pin_memory = true;
-  assert(list.Init("test list", number_objects, payload_size, pin_memory) ==
-         true);
+  assert(list.Init("test list", number_objects, payload_size, page_align,
+                   pin_memory) == true);
   assert(list.AvailObjects() == number_objects);
   assert(list.TotalObjects() == number_objects);
   list.ShowStats();

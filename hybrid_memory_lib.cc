@@ -241,7 +241,7 @@ static void SigSegvAction(int sig, siginfo_t* sig_info, void* ucontext) {
   //     one thread unprotected it, and has populated this same page.
   //     This is a serious data race with regular virtual memory.
   // It's very difficult to distinguish case 1 and 2.
-  // User is expected to implelent a locking at higher level to prevent
+  // User is expected to implement a locking at higher level to prevent
   // case 2 from ever happening. So we only handle case 1.
   if (v2hmap->exist_page_cache) {
     if (rwerror == 0) {

@@ -15,14 +15,17 @@
 bool AsyncIOManager::Init(uint64_t max_outstanding_ios) {
   assert(is_ready_ == false);
   assert(max_outstanding_ios <= MAX_OUTSTANDING_ASYNCIO);
-  int ret = io_setup(MAX_OUTSTANDING_ASYNCIO, &ioctx_);
+  int ret = io_setup(max_outstanding_ios, &ioctx_);
   if (ret != 0) {
     err("io_setup failed return: %d\n", ret);
     assert(0);
   }
 
+  bool page_align = false;
   bool pin_memory = true;
-  assert(request_freelist_.Init("asyncio-freelist", max_outstanding_ios, 0,
+  uint64_t payload_datasize = 0;
+  assert(request_freelist_.Init("asyncio-freelist", max_outstanding_ios,
+                                payload_datasize, page_align,
                                 pin_memory) == true);
 
   max_outstanding_ios_ = max_outstanding_ios;

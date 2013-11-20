@@ -29,10 +29,10 @@ bool RAMCache::Init(HybridMemory* hmem,
   // Prepare the free-list.
   uint64_t number_pages = max_cache_size_ >> PAGE_BITS;
   uint64_t object_datasize = PAGE_SIZE;
+  bool page_align = true;
   bool pin_memory = true;
-  assert(free_list_.Init(
-             name + "-freelist", number_pages, object_datasize, pin_memory) ==
-         true);
+  assert(free_list_.Init(name + "-freelist", number_pages, object_datasize,
+                         page_align, pin_memory) == true);
 
   // Prepare hash table. Load-factor = 4/3.
   uint64_t hash_buckets = number_pages * 3 / 4;

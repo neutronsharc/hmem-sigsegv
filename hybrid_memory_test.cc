@@ -86,7 +86,7 @@ static void* AccessHybridMemoryRandomAccess(void *arg) {
       max_write_latency_ns = latency_ns;
     }
     if (i && i % 2000 == 0) {
-      printf("thread %d: read: %ld\n", task->id, i);
+      printf("thread %d: random-work: %ld\n", task->id, i);
     }
     ++task->actual_number_access;
   }
@@ -306,7 +306,7 @@ static void TestMultithreadAccess() {
   }
 
   // Start parallel threads to access the virt-memory.
-  uint32_t max_threads = 1;
+  uint32_t max_threads = 2;
   TaskItem tasks[max_threads];
   uint64_t number_access = access_memory_pages;
   //uint64_t number_access = 1000UL * 25;
@@ -335,8 +335,8 @@ static void TestMultithreadAccess() {
       assert(pthread_create(
                  &tasks[i].thread_id,
                  NULL,
-                 //AccessHybridMemoryWriteThenRead,
-                 AccessHybridMemoryRandomAccess,
+                 AccessHybridMemoryWriteThenRead,
+                 //AccessHybridMemoryRandomAccess,
                  &tasks[i]) == 0);
     }
     sleep(1);

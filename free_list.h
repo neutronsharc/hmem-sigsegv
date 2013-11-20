@@ -39,6 +39,7 @@ class FreeList {
   bool Init(const std::string& name,
             uint64_t total_objects,
             uint64_t object_datasize,
+            bool page_align,
             bool pin_memory);
 
   // Free up internal resources before exit.
@@ -78,6 +79,9 @@ class FreeList {
   // Payload data size at each object.
   uint64_t object_datasize_;
 
+  // If the objects array is page-aligned.
+  bool page_align_;
+
   // If we should pin the free-list memory.
   bool pin_memory_;
 
@@ -88,26 +92,34 @@ template <class T>
 bool FreeList<T>::Init(const std::string& name,
                        uint64_t total_objects,
                        uint64_t object_datasize,
+                       bool page_align,
                        bool pin_memory) {
   assert(ready_ == false);
   total_objects_ = total_objects;
+  page_align_ = page_align;
   pin_memory_ = pin_memory;
   object_datasize_ = RoundUpToPageSize(object_datasize);
   uint64_t total_objects_size = total_objects_ * sizeof(T);
   uint64_t total_list_size = total_objects_ * sizeof(T*);
   uint64_t total_objects_datasize = total_objects_ * object_datasize_;
   uint32_t alignment = PAGE_SIZE;
-  assert(posix_memalign((void**)&all_objects_, alignment, total_objects_size) ==
-         0);
-  assert(posix_memalign((void**)&list_, alignment, total_list_size) == 0);
-  if (object_datasize_ > 0) {
-    dbg("freelist %s: pre-allocate data area %ld for %ld objs\n",
-        name.c_str(),
-        total_objects_datasize,
-        total_objects);
-    assert(posix_memalign(
-               (void**)&objects_data_, alignment, total_objects_datasize) == 0);
+  if (page_align) {
+    assert(posix_memalign((void **)&all_objects_, alignment,
+                          total_objects_size) == 0);
+    assert(posix_memalign((void **)&list_, alignment, total_list_size) == 0);
+  } else {
+    all_objects_ = new T[total_objects];
+    assert(all_objects_);
+    list_ = new T*[total_objects];
+    assert(list_);
   }
+  if (object_datasize_ > 0) {
+    dbg("page-align freelist %s: pre-allocate data area %ld for %ld objs\n",
+        name.c_str(), total_objects_datasize, total_objects);
+    assert(posix_memalign((void **)&objects_data_, alignment,
+                          total_objects_datasize) == 0);
+  }
+
   if (pin_memory_) {
     assert(mlock(all_objects_, total_objects_size) == 0);
     assert(mlock(list_, total_list_size) == 0);
@@ -147,8 +159,13 @@ bool FreeList<T>::Release() {
         munlock(objects_data_, total_objects_ * object_datasize_);
       }
     }
-    free(all_objects_);
-    free(list_);
+    if (page_align_) {
+      free(all_objects_);
+      free(list_);
+    } else {
+      delete[] all_objects_;
+      delete[] list_;
+    }
     if (object_datasize_ > 0) {
       free(objects_data_);
     }
