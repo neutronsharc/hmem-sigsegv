@@ -77,6 +77,8 @@ bool FlashCache::Init(HybridMemory* hmem,
   total_flash_pages_ = total_flash_pages;
   hits_count_ = 0;
   overflow_pages_ = 0;
+  max_evict2hdd_latency_usec_ = 0;
+  total_evict2hdd_pages_ = 0;
   ready_ = true;
   return ready_;
 }
@@ -141,6 +143,7 @@ uint32_t FlashCache::MigrateToHDD(
   uint64_t asyncio_copy_write_requests = 0;
   uint64_t asyncio_completions = 0;
 
+  uint64_t tstart = NowInUsec();
   for (uint64_t i = 0; i < flash_pages_writeto_hdd.size(); ++i) {
     uint64_t flash_page_number = flash_pages_writeto_hdd[i];
     F2VMapItem* f2vmap = &f2v_map_[flash_page_number];
@@ -222,6 +225,8 @@ uint32_t FlashCache::MigrateToHDD(
                                                   (void *)v2hmap,
                                                   (void *)(&aux_buffer_list_));
           if (aio_manager->Submit(request) == false) {
+            err("Unable to submit async io.\n");
+            request->Dump();
             use_asyncio = false;
             // TODO: release the requests to aio manager.
           } else {
@@ -243,12 +248,10 @@ uint32_t FlashCache::MigrateToHDD(
       }
     }
   }
-  uint64_t expire_time = NowInUsec();
-  expire_time += (2 * 1000000);
+  uint64_t expire_time = NowInUsec() + 2 * 1000000;
   while (asyncio_completions < asyncio_copy_read_requests * 2) {
     asyncio_completions += aio_manager->Poll(1);
-    uint64_t current_time = NowInUsec();
-    if (current_time > expire_time) {
+    if (NowInUsec() > expire_time) {
       break;
     }
   }
@@ -258,6 +261,11 @@ uint32_t FlashCache::MigrateToHDD(
         "completions\n",
         asyncio_copy_read_requests, asyncio_copy_write_requests,
         asyncio_completions);
+  }
+  uint64_t latency_usec = NowInUsec() - tstart;
+  if (latency_usec > max_evict2hdd_latency_usec_) {
+    max_evict2hdd_latency_usec_ = latency_usec;
+    evict2hdd_pages_ =  flash_pages_writeto_hdd.size();
   }
   return flash_pages_writeto_hdd.size();
 }
@@ -441,7 +449,7 @@ bool FlashCache::LoadFromHDDFile(VAddressRange* vaddr_range,
   uint64_t hdd_file_offset = (uint64_t)page - (uint64_t)vaddr_range->address() +
                              vaddr_range->hdd_file_offset();
   uint64_t read_size = PAGE_SIZE;
-  assert(!read_ahead);  // Dont support read ahead right now.
+  assert(!read_ahead);  // NOT support read ahead right now.
   if (!read_ahead) {
     if (pread(vaddr_range->hdd_file_fd(), page, read_size, hdd_file_offset) !=
         read_size) {
@@ -455,7 +463,8 @@ bool FlashCache::LoadFromHDDFile(VAddressRange* vaddr_range,
     }
   } else {
     read_size = PAGE_SIZE << VADDRESS_CHUNK_BITS;
-    uint64_t virtual_chunk = (uint64_t)page & ~((1ULL << (PAGE_BITS + VADDRESS_CHUNK_BITS)) - 1);
+    uint64_t virtual_chunk =
+        (uint64_t)page & ~((1ULL << (PAGE_BITS + VADDRESS_CHUNK_BITS)) - 1);
     hdd_file_offset = virtual_chunk - (uint64_t)vaddr_range->address() +
                       vaddr_range->hdd_file_offset();
     // TODO: at read-ahead mode, read an entire chunk from hdd file,
@@ -466,11 +475,14 @@ bool FlashCache::LoadFromHDDFile(VAddressRange* vaddr_range,
 
 void FlashCache::ShowStats() {
   printf(
-      "\n\n*****\tflash-cache: %s, flash-file: %s, total-flash pages %ld, "
-      "used-flash-pages %ld, available flash pages %ld\n",
+      "\n\n*****\tflash-cache: %s, flash-file: %s, total-flash pages %ld,\n"
+      "used-flash-pages %ld, available flash pages %ld\n"
+      "max-evict-lat %ld usec (write %ld pages)\n",
       name_.c_str(),
       flash_filename_.c_str(),
       total_flash_pages_,
       page_allocate_table_.used_pages(),
-      page_allocate_table_.free_pages());
+      page_allocate_table_.free_pages(),
+      max_evict2hdd_latency_usec_,
+      evict2hdd_pages_);
 }

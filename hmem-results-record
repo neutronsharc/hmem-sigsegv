@@ -1,4 +1,69 @@
 
+
+====================================================================
+=================
+regular IO vs. Async-IO (libaio)
+
+pure-random access, 50-50 r/w,  1 thread:
+
+hybrid-memory: hit-ram-cache=2471, hit-flash-cache=6551, found-pages = 25337, unfound-pages=0
+
+*****	flash-cache: hmem-0-flashcache, flash-file: /tmp/hybridmemory/flashcache-hmem-0, total-flash pages 12800, used-flash-pages 12787, available flash pages 13
+AccessHybridMemoryRandomAccess: thread 0: found-pages=25337, unfound-pages=0
+
+	^^^^^^^^^^^^^^^^^^^^   use regular blocking IO to migrate data between flash-hdd, 
+
+----------------------- Stats --------------------
+AccessHybridMemoryRandomAccess: Thread 0: random-50/50 read/write, max-write-latency = 1221067.816000 usec, max-read-lat = 6461011.636000 usec
+see page faults=25397
+1 threads, 25600 access, 25397 page faults in 116520274 usec, 4587.954247 usec/page
+throughput = 219 access / sec
+
+----------------------- Stats --------------------
+AccessHybridMemoryRandomAccess: Thread 0: random-50/50 read/write, max-write-latency = 8118408.859000 usec, max-read-lat = 381669.754000 usec
+see page faults=25416
+1 threads, 25600 access, 25425 page faults in 140747442 usec, 5535.789263 usec/page
+throughput = 181 access / sec
+
+----------------------- Stats --------------------
+AccessHybridMemoryRandomAccess: Thread 0: random-50/50 read/write, max-write-latency = 3972525.459000 usec, max-read-lat = 538943.641000 usec
+see page faults=25425
+1 threads, 25600 access, 25413 page faults in 143426983 usec, 5643.843033 usec/page
+throughput = 178 access / sec
+
+
+
+	^^^^^^^^^^^^^^^^^^^ Use  aio:
+
+hybrid-memory: hit-ram-cache=2365, hit-flash-cache=6573, found-pages = 25347, unfound-pages=0
+*****	flash-cache: hmem-0-flashcache, flash-file: /tmp/hybridmemory/flashcache-hmem-0, total-flash pages 12800, used-flash-pages 12798, available flash pages 2
+AccessHybridMemoryRandomAccess: thread 0: found-pages=25347, unfound-pages=0
+hybrid-memory: hit-ram-cache=2441, hit-flash-cache=6594, found-pages = 25351, unfound-pages=0
+*****	flash-cache: hmem-0-flashcache, flash-file: /tmp/hybridmemory/flashcache-hmem-0, total-flash pages 12800, used-flash-pages 12788, available flash pages 12
+AccessHybridMemoryRandomAccess: thread 0: found-pages=25351, unfound-pages=0
+
+----------------------- Stats --------------------
+AccessHybridMemoryRandomAccess: Thread 0: random-50/50 read/write, max-write-latency = 3822052.659000 usec, max-read-lat = 1503899.990000 usec
+see page faults=25420
+1 threads, 25600 access, 25420 page faults in 120483781 usec, 4739.723879 usec/page
+throughput = 212 access / sec
+--------------------- Stats --------------------
+AccessHybridMemoryRandomAccess: Thread 0: random-50/50 read/write, max-write-latency = 461430.151000 usec, max-read-lat = 8026783.726000 usec
+see page faults=25420
+1 threads, 25600 access, 25420 page faults in 116151584 usec, 4569.299135 usec/page
+throughput = 220 access / sec
+---------------------- Stats --------------------
+AccessHybridMemoryRandomAccess: Thread 0: random-50/50 read/write, max-write-latency = 7913584.533000 usec, max-read-lat = 334544.712000 usec
+see page faults=25405
+1 threads, 25600 access, 25405 page faults in 124587885 usec, 4904.069475 usec/page
+throughput = 205 access / sec
+
+
+
+
+
+
+
 =====================================================================
 ==============	flash-page  page allocation/free cost
 

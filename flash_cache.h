@@ -87,6 +87,8 @@ class FlashCache {
 
   void ShowStats();
 
+  void Dump();
+
  protected:
   // Backing flash-cache file.
   std::string flash_filename_;
@@ -127,6 +129,14 @@ class FlashCache {
 
   // Free-list of he aux-buffer pages.
   std::vector<uint8_t*> aux_buffer_list_;
+
+  // Max latency to evict flash pages to hdd.
+  uint64_t max_evict2hdd_latency_usec_;
+
+  // Evict this many pages when the max-latency was experienced.
+  uint64_t evict2hdd_pages_;
+
+  uint64_t total_evict2hdd_pages_;
 
   // How many lookup are hits.
   uint64_t hits_count_;

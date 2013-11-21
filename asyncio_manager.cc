@@ -37,10 +37,12 @@ bool AsyncIOManager::Init(uint64_t max_outstanding_ios) {
 bool AsyncIOManager::Release() {
   if (is_ready_) {
     dbg("Release io-context for asyncio.\n");
-    assert(current_outstanding_ios_ == 0);
-    request_freelist_.Release();
+    if (current_outstanding_ios_ > 0) {
+      err("Still has outstanding async-ios\n");
+    }
     io_destroy(ioctx_);
     ioctx_ = 0;
+    request_freelist_.Release();
     is_ready_ = false;
   }
   return true;
