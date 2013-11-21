@@ -19,7 +19,7 @@ uint64_t copy_completions = 0;
 uint64_t copy_write_requests = 0;
 
 static void CopyReadCompletion(AsyncIORequest *orig_request, int result,
-                               void *p) {
+                               void *p, void* p2) {
   if (result != 4096) {
     err("copy-read failed.\n");
     return;
@@ -112,7 +112,7 @@ static void TestFileAsyncIo() {
     aio_info->size_ = iosize;
     aio_info->file_offset_ = pos;
     aio_info->io_type_ = WRITE;
-    request->AddCompletionCallback(CopyReadCompletion, (void*)aio_info);
+    request->AddCompletionCallback(CopyReadCompletion, (void*)aio_info, NULL);
 
     assert(aio_manager.Submit(request));
     ++copy_read_requests;

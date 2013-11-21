@@ -36,6 +36,7 @@ bool AsyncIOManager::Init(uint64_t max_outstanding_ios) {
 
 bool AsyncIOManager::Release() {
   if (is_ready_) {
+    dbg("Release io-context for asyncio.\n");
     assert(current_outstanding_ios_ == 0);
     request_freelist_.Release();
     io_destroy(ioctx_);
@@ -106,7 +107,6 @@ uint64_t AsyncIOManager::WaitForEventsWithTimeout(
       err("aio error at: buffer %p size %ld to file %d offset %ld type %d, errno=%d\n",
           request->buffer(), request->size(), request->file_handle(),
           request->file_offset(), request->io_type(), (int)(events[i].res));
-      perror("aio error: ");
     }
     request->RunCompletionCallbacks(events[i].res);
     FreeRequest(request);
@@ -119,6 +119,6 @@ uint64_t AsyncIOManager::Poll(uint64_t number_requests) {
 }
 
 uint64_t AsyncIOManager::Wait(uint64_t number_requests,
-                                  struct timespec *timeout) {
+                              struct timespec *timeout) {
   return WaitForEventsWithTimeout(number_requests, number_requests, timeout);
 }

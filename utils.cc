@@ -7,3 +7,9 @@
 uint64_t RoundUpToPageSize(uint64_t size) {
   return (size + PAGE_SIZE - 1) & PAGE_MASK;
 }
+
+uint64_t NowInUsec() {
+  struct timespec ts;
+  clock_gettime(CLOCK_REALTIME, &ts);
+  return ts.tv_sec * 1000000 + ts.tv_nsec / 1000;
+}

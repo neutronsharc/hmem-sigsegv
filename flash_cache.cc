@@ -13,7 +13,10 @@
 
 #include <memory>
 #include <string>
+#include <vector>
 
+#include "asyncio_manager.h"
+#include "asyncio_request.h"
 #include "debug.h"
 #include "flash_cache.h"
 #include "hash_table.h"
@@ -92,12 +95,52 @@ void FlashCache:: Release() {
   }
 }
 
+static void MoveToHDDWriteCompletion(AsyncIORequest *request, int result,
+                                     void *param1, void *param2) {
+  if (result != request->size()) {
+    // TODO: handle failure.
+    err("Write op failed\n");
+  }
+  std::vector<uint8_t *> *buffer_list =
+      static_cast<std::vector<uint8_t *> *>(param2);
+  buffer_list->push_back((uint8_t*)(request->buffer()));
+
+  V2HMapMetadata *v2hmap = (V2HMapMetadata *)param1;
+  v2hmap->dirty_flash_cache = 0;
+  v2hmap->exist_flash_cache = 0;
+  v2hmap->exist_hdd_file = 1;
+}
+
+static void MoveToHDDReadCompletion(AsyncIORequest *request, int result,
+                                    void *param1, void *param2) {
+  if (result != request->size()) {
+    // TODO: handle failure.
+    err("Read op failed\n");
+  }
+  AsyncIORequest* followup_request = (AsyncIORequest*)param1;
+  uint64_t* copy_write_requests = (uint64_t*)param2;
+  assert(request->asyncio_manager()->Submit(followup_request) == true);
+  ++*copy_write_requests;
+}
+
 uint32_t FlashCache::MigrateToHDD(
     std::vector<uint64_t>& flash_pages_writeto_hdd) {
   assert(flash_pages_writeto_hdd.size() > 0);
+
   // TODO: select the "best" version of the page to write to hdd.
   // From ram-cache? from flash-cache?
-  // TODO: use libaio.
+
+  //bool support_asyncio = hybrid_memory_->support_asyncio();
+  bool support_asyncio = false;
+  AsyncIOManager* aio_manager = NULL;
+  if (support_asyncio) {
+    aio_manager = hybrid_memory_->asyncio_manager();
+  }
+  bool use_asyncio = support_asyncio;
+  uint64_t asyncio_copy_read_requests = 0;
+  uint64_t asyncio_copy_write_requests = 0;
+  uint64_t asyncio_completions = 0;
+
   for (uint64_t i = 0; i < flash_pages_writeto_hdd.size(); ++i) {
     uint64_t flash_page_number = flash_pages_writeto_hdd[i];
     F2VMapItem* f2vmap = &f2v_map_[flash_page_number];
@@ -163,21 +206,58 @@ uint32_t FlashCache::MigrateToHDD(
             vaddress_page_number,
             hdd_file_offset);
       }
-      // TODO: use async-io to issue multiple (read-flash, write-hdd) chains.
-      assert(pread(flash_fd_,
-                   data_buffer,
-                   io_size,
-                   flash_page_number << PAGE_BITS) == io_size);
-      assert(pwrite(vaddress_range->hdd_file_fd(),
-                    data_buffer,
-                    io_size,
-                    hdd_file_offset) == io_size);
-      aux_buffer_list_.push_back(data_buffer);
+      if (support_asyncio && use_asyncio) {
+        AsyncIORequest *request  = aio_manager->GetRequest();
+        AsyncIORequest *followup_request  = aio_manager->GetRequest();
+        if (request == NULL || followup_request == NULL) {
+            use_asyncio = false;
+        } else {
+          request->Prepare(flash_fd_, data_buffer, io_size,
+                           flash_page_number << PAGE_BITS, READ);
+          followup_request->Prepare(vaddress_range->hdd_file_fd(), data_buffer,
+                                    io_size, hdd_file_offset, WRITE);
+          request->AddCompletionCallback(MoveToHDDReadCompletion,
+                                         (void *)followup_request, &asyncio_copy_write_requests);
+          followup_request->AddCompletionCallback(MoveToHDDWriteCompletion,
+                                                  (void *)v2hmap,
+                                                  (void *)(&aux_buffer_list_));
+          if (aio_manager->Submit(request) == false) {
+            use_asyncio = false;
+            // TODO: release the requests to aio manager.
+          } else {
+            ++asyncio_copy_read_requests;
+            asyncio_completions += aio_manager->Poll(2);
+          }
+        }
+      }
+      if (!support_asyncio || !use_asyncio) {
+        assert(pread(flash_fd_, data_buffer, io_size,
+                     flash_page_number << PAGE_BITS) == io_size);
+        assert(pwrite(vaddress_range->hdd_file_fd(), data_buffer, io_size,
+                      hdd_file_offset) == io_size);
 
-      v2hmap->dirty_flash_cache = 0;
-      v2hmap->exist_flash_cache = 0;
-      v2hmap->exist_hdd_file = 1;
+        aux_buffer_list_.push_back(data_buffer);
+        v2hmap->dirty_flash_cache = 0;
+        v2hmap->exist_flash_cache = 0;
+        v2hmap->exist_hdd_file = 1;
+      }
     }
+  }
+  uint64_t expire_time = NowInUsec();
+  expire_time += (2 * 1000000);
+  while (asyncio_completions < asyncio_copy_read_requests * 2) {
+    asyncio_completions += aio_manager->Poll(1);
+    uint64_t current_time = NowInUsec();
+    if (current_time > expire_time) {
+      break;
+    }
+  }
+  if (asyncio_copy_read_requests + asyncio_copy_write_requests >
+      asyncio_completions) {
+    dbg("Timeout, issued %ld copy-read, %ld copy-write, got %ld "
+        "completions\n",
+        asyncio_copy_read_requests, asyncio_copy_write_requests,
+        asyncio_completions);
   }
   return flash_pages_writeto_hdd.size();
 }

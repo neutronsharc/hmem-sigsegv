@@ -13,19 +13,18 @@
 #include <string>
 #include <vector>
 
+#include "asyncio_manager.h"
+#include "asyncio_request.h"
 #include "hybrid_memory_const.h"
+#include "flash_cache.h"
 #include "page_cache.h"
 #include "ram_cache.h"
-#include "flash_cache.h"
 #include "sigsegv_handler.h"
-
-class PageCache;
-class RAMCache;
 
 // An instance of hybrid-memory.
 class HybridMemory {
  public:
-  HybridMemory() : ready_(false) {}
+  HybridMemory() : ready_(false), asyncio_enabled_(false) {}
 
   virtual ~HybridMemory() {
     Release();
@@ -52,9 +51,19 @@ class HybridMemory {
 
   FlashCache* GetFlashCache() { return &flash_cache_; }
 
+  bool support_asyncio() const { return asyncio_enabled_; }
+
+  AsyncIOManager* asyncio_manager() { return &asyncio_manager_; }
+
  protected:
   // Indicate if this hmem is ready.
   bool ready_;
+
+  // Indicate if asyncio is successfully enabled.
+  bool asyncio_enabled_;
+
+  // Manager of async-io.
+  AsyncIOManager asyncio_manager_;
 
   pthread_mutex_t lock_;
 

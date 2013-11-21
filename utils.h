@@ -6,9 +6,14 @@
 #define UTILS_H_
 
 #include <stdint.h>
+#include <stdlib.h>
+#include <time.h>
 #include "hybrid_memory_const.h"
 
 // Round up a value to page alignment.
 uint64_t RoundUpToPageSize(uint64_t size);
+
+// Get current time in micro-seconds.
+uint64_t NowInUsec();
 
 #endif  // UTILS_H_

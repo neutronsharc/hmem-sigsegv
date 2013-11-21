@@ -29,4 +29,6 @@
 // Flash-cache's Page stats table: a PTE node includes 2^12 pages.
 #define PTE_BITS (12)
 
+#define USE_ASYNCIO
+
 #endif  // HYBRID_MEMORY_CONST_H_

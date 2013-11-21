@@ -37,7 +37,7 @@ class AsyncIORequest;
 class AsyncIOManager;
 
 // Completion callback for an async-io.
-typedef void (*AsyncIOCompletion)(AsyncIORequest*, int, void*);
+typedef void (*AsyncIOCompletion)(AsyncIORequest*, int, void*, void*);
 
 // This class  represent an async IO request.
 class AsyncIORequest {
@@ -70,7 +70,8 @@ class AsyncIORequest {
     return completion_callbacks_.size();
   }
 
-  void AddCompletionCallback(AsyncIOCompletion callback, void* callback_param);
+  void AddCompletionCallback(AsyncIOCompletion callback, void *param1,
+                             void *param2);
 
   void RunCompletionCallbacks(int result);
 
@@ -83,6 +84,8 @@ class AsyncIORequest {
   uint64_t file_offset() const { return file_offset_; }
 
   IOType io_type() const { return io_type_; }
+
+  void Dump();
 
  protected:
   bool is_active_;
@@ -106,7 +109,8 @@ class AsyncIORequest {
   IOType io_type_;
 
   std::vector<AsyncIOCompletion> completion_callbacks_;
-  std::vector<void*> completion_callback_params_;
+  std::vector<void*> completion_callbacks_param1_;
+  std::vector<void*> completion_callbacks_param2_;
 };
 
 #endif  // ASYNCIO_REQUEST_H_

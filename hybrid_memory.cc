@@ -37,6 +37,12 @@ bool HybridMemory::Init(const std::string &ssd_dirpath,
   assert(ram_cache_.Init(this, strname + "-ramcache", ram_buffer_size) == true);
   assert(flash_cache_.Init(
       this, strname + "-flashcache", flash_filename, ssd_buffer_size) == true);
+  if (asyncio_manager_.Init(MAX_OUTSTANDING_ASYNCIO) != true) {
+    err("Unable to init asyncio.  Will not use async io.\n");
+    asyncio_enabled_ = false;
+  } else {
+    asyncio_enabled_ = true;
+  }
   ready_ = true;
   return ready_;
 }
@@ -46,6 +52,9 @@ bool HybridMemory::Release() {
     page_cache_.Release();
     ram_cache_.Release();
     flash_cache_.Release();
+    if (asyncio_enabled_) {
+      asyncio_manager_.Release();
+    }
     ready_ = false;
   }
   return true;

@@ -268,9 +268,9 @@ static void TestMultithreadAccess() {
   uint64_t one_mega = 1024ULL * 1024;
   uint32_t num_hmem_instances = 1;
   uint64_t page_buffer_size = one_mega * 1;
-  uint64_t ram_buffer_size = one_mega * 10; //200;
-  uint64_t ssd_buffer_size = one_mega * 50; //16 * 128;
-  uint64_t hdd_file_size = one_mega * 100; //5000;
+  uint64_t ram_buffer_size = one_mega * 5; //200;
+  uint64_t ssd_buffer_size = one_mega * 10; //16 * 128;
+  uint64_t hdd_file_size = one_mega * 30; //5000;
   assert(InitHybridMemory("/tmp/hybridmemory/",
                           "hmem",
                           page_buffer_size,
@@ -306,7 +306,7 @@ static void TestMultithreadAccess() {
   }
 
   // Start parallel threads to access the virt-memory.
-  uint32_t max_threads = 2;
+  uint32_t max_threads = 1;
   TaskItem tasks[max_threads];
   uint64_t number_access = access_memory_pages;
   //uint64_t number_access = 1000UL * 25;
@@ -335,8 +335,8 @@ static void TestMultithreadAccess() {
       assert(pthread_create(
                  &tasks[i].thread_id,
                  NULL,
-                 AccessHybridMemoryWriteThenRead,
-                 //AccessHybridMemoryRandomAccess,
+                 //AccessHybridMemoryWriteThenRead,
+                 AccessHybridMemoryRandomAccess,
                  &tasks[i]) == 0);
     }
     sleep(1);
