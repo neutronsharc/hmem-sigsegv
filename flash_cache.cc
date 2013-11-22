@@ -132,8 +132,8 @@ uint32_t FlashCache::MigrateToHDD(
   // TODO: select the "best" version of the page to write to hdd.
   // From ram-cache? from flash-cache?
 
-  //bool support_asyncio = hybrid_memory_->support_asyncio();
-  bool support_asyncio = false;
+  bool support_asyncio = hybrid_memory_->support_asyncio();
+  //bool support_asyncio = false;
   AsyncIOManager* aio_manager = NULL;
   if (support_asyncio) {
     aio_manager = hybrid_memory_->asyncio_manager();

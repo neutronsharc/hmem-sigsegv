@@ -128,8 +128,157 @@ static void TestFileAsyncIo() {
       copy_read_requests, copy_write_requests, copy_completions);
 }
 
+
+// async-io, a single IO is posted at a time.
+// Linux aio supports only "scattered read/write" in that, the buffers can be
+// discrete, but the position in file is a contiguous section.
+void SimpleAsycIO(std::string file_name, uint64_t file_size, uint64_t rqst_per_batch) {
+  AsyncIOManager aio_manager;
+  uint64_t aio_max_nr = 512;
+  assert(rqst_per_batch < aio_max_nr);
+  aio_manager.Init(aio_max_nr);
+
+  int fd = open(file_name.c_str(), O_RDWR | O_DIRECT, 0666);
+  assert(fd > 0);
+
+  file_size = RoundUpToPageSize(file_size);
+  uint64_t file_pages = file_size / PAGE_SIZE;
+  dbg("Will perform Async IO on file %s, size %ld (%ld pages)\n",
+      file_name.c_str(), file_size, file_pages);
+
+  uint64_t total_accesses = file_pages;
+  uint8_t* data_buffer;
+  assert(posix_memalign((void **)&data_buffer, 4096,
+                        PAGE_SIZE * rqst_per_batch) == 0);
+  memset(data_buffer, 0, PAGE_SIZE * rqst_per_batch);
+
+  uint32_t iosize = PAGE_SIZE;
+  uint64_t number_reads = 0;
+  uint64_t number_writes = 0;
+  uint64_t number_completions = 0;
+  uint64_t max_batch_latency_usec = 0;
+  uint64_t t1, t2;
+
+  uint64_t time_begin = NowInUsec();
+  uint32_t rand_seed = (uint32_t)time_begin;
+  for (uint64_t i = 0; i < total_accesses; i += rqst_per_batch) {
+    t1 = NowInUsec();
+    for (uint64_t j = 0; j < rqst_per_batch; ++j) {
+      uint64_t target_page = rand_r(&rand_seed) % file_pages;
+      bool read = true;
+      if (rand_r(&rand_seed) % 100 > 50) {
+        read = false;
+      }
+      AsyncIORequest *request = aio_manager.GetRequest();
+      assert(request);
+      request->Prepare(fd,
+                       data_buffer + j * PAGE_SIZE,
+                       iosize,
+                       target_page * PAGE_SIZE,
+                       read ? READ : WRITE);
+      if (read) ++number_reads;
+      else ++number_writes;
+      assert(aio_manager.Submit(request));
+      number_completions += aio_manager.Poll(1);
+      if (i && (i + j) % 1000 == 0) {
+        dbg("Simple Async IO: %ld...\n", i + j);
+      }
+    }
+    while (number_completions < (number_reads + number_writes)) {
+      number_completions += aio_manager.Poll(1);
+    }
+    t2 = NowInUsec() - t1;
+    if (t2 > max_batch_latency_usec) max_batch_latency_usec = t2;
+  }
+  uint64_t total_time = NowInUsec() - time_begin;
+  close(fd);
+  free(data_buffer);
+
+  printf("\n=======================\n");
+  printf("Simple Async IO: total %ld ops (%ld reads, %ld writes) in %f sec, "
+         "%f ops/sec\n"
+         "1 op per rqst, %ld rqsts per batch, max-lat %ld per batch\n"
+         "avg-lat = %ld usec\n",
+         total_accesses, number_reads, number_writes, total_time / 1000000.0,
+         total_accesses / (total_time / 1000000.0), rqst_per_batch,
+         max_batch_latency_usec, total_time / total_accesses);
+  printf("=======================\n");
+}
+
+// Simple sync-io: random, one-by-one.
+void SyncIOTest(std::string file_name, uint64_t file_size) {
+  int fd = open(file_name.c_str(), O_RDWR | O_DIRECT, 0666);
+  assert(fd > 0);
+
+  file_size = RoundUpToPageSize(file_size);
+  uint64_t file_pages = file_size / PAGE_SIZE;
+  dbg("Will perform Sync IO on file %s, size %ld (%ld pages)\n",
+      file_name.c_str(), file_size, file_pages);
+
+  uint64_t total_accesses = file_pages;
+  uint8_t* data_buffer;
+  assert(posix_memalign((void**)&data_buffer, 4096, PAGE_SIZE) == 0);
+  memset(data_buffer, 0, PAGE_SIZE);
+
+  uint32_t iosize = PAGE_SIZE;
+  uint64_t number_reads = 0;
+  uint64_t number_writes = 0;
+  uint64_t max_read_latency_usec = 0;
+  uint64_t max_write_latency_usec = 0;
+  uint64_t t1, t2;
+
+  uint64_t time_begin = NowInUsec();
+  uint32_t rand_seed = (uint32_t)time_begin;
+  for (uint64_t i = 0; i < total_accesses; ++i) {
+    uint64_t target_page = rand_r(&rand_seed) % file_pages;
+    bool read = true;
+    if (rand_r(&rand_seed) % 100 > 50) {
+      read = false;
+    }
+    if (read == true) {
+      t1 = NowInUsec();
+      if (pread(fd, data_buffer, iosize, target_page * PAGE_SIZE) != iosize) {
+        perror("read failed:");
+      }
+      t2 = NowInUsec() - t1;
+      if (t2 > max_read_latency_usec) max_read_latency_usec = t2;
+      ++number_reads;
+    } else {
+      t1 = NowInUsec();
+      if (pwrite(fd, data_buffer, iosize, target_page * PAGE_SIZE) != iosize) {
+        perror("write failed:");
+      }
+      t2 = NowInUsec() - t1;
+      if (t2 > max_write_latency_usec) max_write_latency_usec = t2;
+      ++number_writes;
+    }
+    if (i && i % 1000 == 0) {
+      dbg("Sync IO: %ld...\n", i);
+    }
+  }
+  uint64_t total_time = NowInUsec() - time_begin;
+  close(fd);
+  free(data_buffer);
+
+  printf("\n=======================\n");
+  printf("Sync IO: total %ld ops (%ld reads, %ld writes) in %f sec, %f ops/sec\n"
+         "avg-lat = %ld usec, max-read-lat %ld usec, max-write-lat %ld usec\n",
+         total_accesses, number_reads, number_writes, total_time / 1000000.0,
+         total_accesses / (total_time / 1000000.0),
+         total_time / total_accesses,
+         max_read_latency_usec, max_write_latency_usec);
+}
+
 int main(int argc, char **argv) {
-  TestFileAsyncIo();
+  std::string file_name = "/tmp/hybridmemory/hddfile";
+  uint64_t file_size = 1024UL * 1024 * 20;
+
+  SyncIOTest(file_name, file_size);
+
+  uint64_t rqsts_per_batch = 64;
+  SimpleAsycIO(file_name, file_size, rqsts_per_batch);
+
+  //TestFileAsyncIo();
   printf("PASS\n");
   return 0;
 }

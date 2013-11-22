@@ -44,7 +44,7 @@ page_stats_table_test : page_stats_table_test.o page_stats_table.o
 file_throughput_test : file_throughput_test.cc
 	${CC} ${INC} $^ -o $@ ${LDFLAGS}
 
-asyncio_test : asyncio_test2.o asyncio_manager.o asyncio_request.o utils.o
+asyncio_test : asyncio_test.o asyncio_manager.o asyncio_request.o utils.o
 	${CC} ${INC} $^ -o $@ ${LDFLAGS}
 
 write_file : write_file.cc
