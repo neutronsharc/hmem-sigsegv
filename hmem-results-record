@@ -1,5 +1,32 @@
 
 
+
+Very basic sync-IO vs. async-io (libaio):
+
+		----- sync IO
+Sync IO: total 5120 ops (2614 reads, 2506 writes) in 19.632052 sec, 260.798005 ops/sec
+avg-lat = 3834 usec, max-read-lat 176834 usec, max-write-lat 154926 usec
+
+		-------- async IO
+Init: FreeList<>: allocate 512 class objects with new[]
+Init: Have inited freelist "asyncio-freelist": 512 objs, obj-datasize 0, pin-memory=1
+SimpleAsycIO: Will perform Async IO on file /tmp/hybridmemory/hddfile, size 20971520 (5120 pages)
+
+Simple Async IO: total 5120 ops (2563 reads, 2557 writes) in 14.314881 sec, 357.669756 ops/sec
+1 op per rqst, 16 rqsts per batch, max-lat 204305 per batch
+avg-lat = 2795 usec
+
+Simple Async IO: total 5120 ops (2671 reads, 2449 writes) in 13.677782 sec, 374.329698 ops/sec
+1 op per rqst, 64 rqsts per batch, max-lat 493291 per batch
+avg-lat = 2671 usec
+
+
+
+
+
+
+
+
 ====================================================================
 =================
 regular IO vs. Async-IO (libaio)
