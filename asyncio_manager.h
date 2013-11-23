@@ -12,6 +12,8 @@
 #include <sys/types.h>
 #include <unistd.h>
 
+#include <vector>
+
 #include "free_list.h"
 
 // Default max requests defined at "/sys/block/sda/queue/nr_requests".
@@ -34,6 +36,8 @@ class AsyncIOManager {
   void FreeRequest(AsyncIORequest* request);
 
   bool Submit(AsyncIORequest* request);
+
+  bool Submit(std::vector<AsyncIORequest*>& request);
 
   // Performing a blocking poll to reap at least "min_completions"
   // completion  events.

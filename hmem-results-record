@@ -21,14 +21,53 @@ Simple Async IO: total 5120 ops (2671 reads, 2449 writes) in 13.677782 sec, 374.
 avg-lat = 2671 usec
 
 
+	=======================
+SyncIOTest: Will perform Sync IO on file /tmp/hybridmemory/hddfile, size 20971520 (5120 pages)
+SyncIOTest: Sync IO: 1000...
+SyncIOTest: Sync IO: 2000...
+SyncIOTest: Sync IO: 3000...
+SyncIOTest: Sync IO: 4000...
+SyncIOTest: Sync IO: 5000...
+
+Sync IO: total 5120 ops (2621 reads, 2499 writes) in 20.047287 sec, 255.396154 ops/sec
+avg-lat = 3915 usec, max-read-lat 108990 usec, max-write-lat 265416 usec
+
+	=======================  One submit for each IO rqst.
+
+Init: FreeList<>: allocate 512 class objects with new[]
+Init: Have inited freelist "asyncio-freelist": 512 objs, obj-datasize 0, pin-memory=1
+SimpleAsycIO: Will perform Async IO on file /tmp/hybridmemory/hddfile, size 20971520 (5120 pages)
+SimpleAsycIO: Simple Async IO: 1000...
+SimpleAsycIO: Simple Async IO: 2000...
+SimpleAsycIO: Simple Async IO: 3000...
+SimpleAsycIO: Simple Async IO: 4000...
+SimpleAsycIO: Simple Async IO: 5000...
+
+Simple Async IO: total 5120 ops (2605 reads, 2515 writes) in 15.299657 sec, 334.648025 ops/sec
+1 op per rqst, 32 rqsts per batch, max-lat 1281120 per batch
+avg-lat = 2988 usec
+Release: Release io-context for asyncio.
+Release: Release free-list "asyncio-freelist"...
+
+	=======================   group 32 IOs in one submit.
+
+Init: FreeList<>: allocate 512 class objects with new[]
+Init: Have inited freelist "asyncio-freelist": 512 objs, obj-datasize 0, pin-memory=1
+GroupSubmitAsycIO: Will perform Async IO on file /tmp/hybridmemory/hddfile, size 20971520 (5120 pages)
+GroupSubmitAsycIO: group submit Async IO: 1000...
+GroupSubmitAsycIO: group submit Async IO: 2000...
+GroupSubmitAsycIO: group submit Async IO: 3000...
+GroupSubmitAsycIO: group submit Async IO: 4000...
+GroupSubmitAsycIO: group submit Async IO: 5000...
+
+Group-submit async IO: total 5120 ops (2615 reads, 2505 writes) in 14.080331 sec, 363.627815 ops/sec
+32 IOs per submit, max-lat 273466 per batch
+avg-lat = 2750 usec
 
 
 
 
-
-
-====================================================================
-=================
+========================================================================================================================================
 regular IO vs. Async-IO (libaio)
 
 pure-random access, 50-50 r/w,  1 thread:

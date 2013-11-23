@@ -128,6 +128,80 @@ static void TestFileAsyncIo() {
       copy_read_requests, copy_write_requests, copy_completions);
 }
 
+// async-io, submit a group of request at a time.
+void GroupSubmitAsycIO(std::string file_name, uint64_t file_size, uint64_t rqst_per_submit) {
+  AsyncIOManager aio_manager;
+  uint64_t aio_max_nr = 512;
+  assert(rqst_per_submit < aio_max_nr);
+  aio_manager.Init(aio_max_nr);
+
+  int fd = open(file_name.c_str(), O_RDWR | O_DIRECT, 0666);
+  assert(fd > 0);
+
+  file_size = RoundUpToPageSize(file_size);
+  uint64_t file_pages = file_size / PAGE_SIZE;
+  dbg("Will perform Async IO on file %s, size %ld (%ld pages)\n",
+      file_name.c_str(), file_size, file_pages);
+
+  uint64_t total_accesses = file_pages;
+  uint8_t* data_buffer;
+  assert(posix_memalign((void **)&data_buffer, 4096,
+                        PAGE_SIZE * rqst_per_submit) == 0);
+  memset(data_buffer, 0, PAGE_SIZE * rqst_per_submit);
+
+  uint32_t iosize = PAGE_SIZE;
+  uint64_t number_reads = 0;
+  uint64_t number_writes = 0;
+  uint64_t number_completions = 0;
+  uint64_t max_batch_latency_usec = 0;
+  uint64_t t1, t2;
+
+  uint64_t time_begin = NowInUsec();
+  uint32_t rand_seed = (uint32_t)time_begin;
+  for (uint64_t i = 0; i < total_accesses; i += rqst_per_submit) {
+    t1 = NowInUsec();
+    std::vector<AsyncIORequest*> rqsts;
+    for (uint64_t j = 0; j < rqst_per_submit; ++j) {
+      uint64_t target_page = rand_r(&rand_seed) % file_pages;
+      bool read = true;
+      if (rand_r(&rand_seed) % 100 > 50) {
+        read = false;
+      }
+      AsyncIORequest *request = aio_manager.GetRequest();
+      assert(request);
+      request->Prepare(fd,
+                       data_buffer + j * PAGE_SIZE,
+                       iosize,
+                       target_page * PAGE_SIZE,
+                       read ? READ : WRITE);
+      if (read) ++number_reads;
+      else ++number_writes;
+      rqsts.push_back(request);
+      if (i && (i + j) % 1000 == 0) {
+        dbg("group submit Async IO: %ld...\n", i + j);
+      }
+    }
+    assert(aio_manager.Submit(rqsts) == true);
+    while (number_completions < (number_reads + number_writes)) {
+      number_completions += aio_manager.Poll(1);
+    }
+    t2 = NowInUsec() - t1;
+    if (t2 > max_batch_latency_usec) max_batch_latency_usec = t2;
+  }
+  uint64_t total_time = NowInUsec() - time_begin;
+  close(fd);
+  free(data_buffer);
+
+  printf("\n=======================\n");
+  printf("Group-submit async IO: total %ld ops (%ld reads, %ld writes) in %f sec, "
+         "%f ops/sec\n"
+         "%ld IOs per submit, max-lat %ld per batch\n"
+         "avg-lat = %ld usec\n",
+         total_accesses, number_reads, number_writes, total_time / 1000000.0,
+         total_accesses / (total_time / 1000000.0), rqst_per_submit,
+         max_batch_latency_usec, total_time / total_accesses);
+  printf("=======================\n");
+}
 
 // async-io, a single IO is posted at a time.
 // Linux aio supports only "scattered read/write" in that, the buffers can be
@@ -271,14 +345,15 @@ void SyncIOTest(std::string file_name, uint64_t file_size) {
 
 int main(int argc, char **argv) {
   std::string file_name = "/tmp/hybridmemory/hddfile";
-  uint64_t file_size = 1024UL * 1024 * 20;
+  uint64_t file_size = 1024UL * 1024 * 30;
 
   SyncIOTest(file_name, file_size);
 
-  uint64_t rqsts_per_batch = 64;
+  uint64_t rqsts_per_batch = 32;
   SimpleAsycIO(file_name, file_size, rqsts_per_batch);
 
-  //TestFileAsyncIo();
+  GroupSubmitAsycIO(file_name, file_size, rqsts_per_batch);
+
   printf("PASS\n");
   return 0;
 }

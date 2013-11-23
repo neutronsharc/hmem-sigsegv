@@ -93,6 +93,37 @@ bool AsyncIOManager::Submit(AsyncIORequest* request) {
   }
 }
 
+bool AsyncIOManager::Submit(std::vector<AsyncIORequest*>& requests) {
+  uint64_t number_requests = requests.size();
+  struct iocb iocb[number_requests];
+  struct iocb *iocbs[number_requests];
+  for (uint64_t i = 0; i < requests.size(); ++i) {
+    switch (requests[i]->io_type()) {
+    case READ:
+      io_prep_pread(&iocb[i], requests[i]->file_handle(), requests[i]->buffer(),
+                    requests[i]->size(), requests[i]->file_offset());
+      break;
+    case WRITE:
+      io_prep_pwrite(&iocb[i], requests[i]->file_handle(),
+                     requests[i]->buffer(), requests[i]->size(),
+                     requests[i]->file_offset());
+      break;
+    default:
+      err("Unknown io type %d\n", requests[i]->io_type());
+      return false;
+    }
+    iocb[i].data = (void *)requests.at(i);
+    iocbs[i] = &iocb[i];
+  }
+  if (io_submit(ioctx_, number_requests, iocbs) == number_requests) {
+    current_outstanding_ios_ += number_requests;
+    return true;
+  } else {
+    err("Try to group submit %ld requests, but failed.", number_requests);
+    return false;
+  }
+}
+
 uint64_t AsyncIOManager::WaitForEventsWithTimeout(
     uint64_t min_completions,
     uint64_t max_completions,
