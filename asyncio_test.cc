@@ -18,6 +18,16 @@ uint64_t copy_read_requests = 0;
 uint64_t copy_completions = 0;
 uint64_t copy_write_requests = 0;
 
+static void FullAsyncIOCompletion(AsyncIORequest *orig_request, int result,
+                               void *p1, void* p2) {
+  if (result != 4096) {
+    err("aio failed.\n");
+    return;
+  }
+  std::vector<uint8_t* >* buffer_list = (std::vector<uint8_t*> *)p1;
+  buffer_list->push_back((uint8_t*)orig_request->buffer());
+}
+
 static void CopyReadCompletion(AsyncIORequest *orig_request, int result,
                                void *p, void* p2) {
   if (result != 4096) {
@@ -128,8 +138,95 @@ static void TestFileAsyncIo() {
       copy_read_requests, copy_write_requests, copy_completions);
 }
 
+// Keep the async-io queue full to get the max throughput.
+void FullAsycIO(std::string file_name, uint64_t file_size,
+    uint64_t queue_depth, bool read) {
+  AsyncIOManager aio_manager;
+  uint64_t aio_max_nr = queue_depth;
+  aio_manager.Init(aio_max_nr);
+
+  int fd = open(file_name.c_str(), O_RDWR | O_DIRECT, 0666);
+  assert(fd > 0);
+
+  file_size = RoundUpToPageSize(file_size);
+  uint64_t file_pages = file_size / PAGE_SIZE;
+  dbg("Will perform full-async IO on file %s, size %ld (%ld pages), "
+      "aio-queue depth=%ld\n",
+      file_name.c_str(), file_size, file_pages, aio_max_nr);
+
+  uint8_t* data_buffer;
+  uint64_t data_buffer_size = PAGE_SIZE * aio_max_nr;
+  assert(posix_memalign((void **)&data_buffer, PAGE_SIZE, data_buffer_size)
+      == 0);
+  memset(data_buffer, 0xff, data_buffer_size);
+  std::vector<uint8_t*> buffer_list;
+  for (uint64_t i = 0; i < data_buffer_size; i += PAGE_SIZE) {
+    buffer_list.push_back(data_buffer + i);
+  }
+
+  uint32_t iosize = PAGE_SIZE;
+  uint64_t number_reads = 0;
+  uint64_t number_writes = 0;
+  uint64_t number_completions = 0;
+  uint64_t total_accesses = file_pages;
+  uint64_t issued_rqst = 0;
+
+  uint64_t begin_usec = NowInUsec();
+  uint32_t rand_seed = (uint32_t)begin_usec;
+  while (issued_rqst < total_accesses) {
+    while (issued_rqst < total_accesses &&
+        buffer_list.size() > 0 &&
+        aio_manager.number_free_requests() > 0) {
+      uint64_t target_page = rand_r(&rand_seed) % file_pages;
+      AsyncIORequest *request = aio_manager.GetRequest();
+      uint8_t* buf = buffer_list.back();
+      buffer_list.pop_back();
+      request->Prepare(fd,
+                       buf,
+                       iosize,
+                       target_page * PAGE_SIZE,
+                       read ? READ : WRITE);
+      request->AddCompletionCallback(FullAsyncIOCompletion, &buffer_list, NULL);
+      assert(aio_manager.Submit(request) == true);
+      if (read)  ++number_reads;
+      else ++number_writes;
+      if (number_reads + number_writes)
+      ++issued_rqst;
+      if (issued_rqst && (issued_rqst % 1000 == 0)) {
+        dbg("issued %ld rqsts\n", issued_rqst);
+      }
+      if (number_completions < number_reads + number_writes) {
+        number_completions += aio_manager.Poll(1);
+      }
+    }
+    if (number_completions < number_reads + number_writes) {
+      number_completions += aio_manager.Poll(1);
+    }
+  }
+  while (number_completions < number_reads + number_writes) {
+    number_completions += aio_manager.Poll(1);
+  }
+  uint64_t total_time = NowInUsec() - begin_usec;
+  close(fd);
+  assert(buffer_list.size() == aio_max_nr);
+  free(data_buffer);
+  printf("\n=======================\n");
+  printf("Full-Async-io: queue-depth=%ld, %ld ops (%ld reads, %ld writes) in %f sec, "
+         "%f ops/sec, avg-lat = %ld usec, bandwidth=%f MB/s\n",
+         aio_max_nr,
+         total_accesses,
+         number_reads,
+         number_writes,
+         total_time / 1000000.0,
+         total_accesses / (total_time / 1000000.0),
+         total_time / total_accesses,
+         (file_size + 0.0) / total_time);
+  printf("=======================\n");
+}
+
 // async-io, submit a group of request at a time.
-void GroupSubmitAsycIO(std::string file_name, uint64_t file_size, uint64_t rqst_per_submit) {
+void GroupSubmitAsycIO(std::string file_name, uint64_t file_size,
+    uint64_t rqst_per_submit) {
   AsyncIOManager aio_manager;
   uint64_t aio_max_nr = 512;
   assert(rqst_per_submit < aio_max_nr);
@@ -344,15 +441,28 @@ void SyncIOTest(std::string file_name, uint64_t file_size) {
 }
 
 int main(int argc, char **argv) {
-  std::string file_name = "/tmp/hybridmemory/hddfile";
-  uint64_t file_size = 1024UL * 1024 * 30;
+  if (argc < 2) {
+    printf("Async IO test.\n"
+           "Usage: %s  [r/w file] \n",
+           argv[0]);
+    return 0;
+  }
 
-  SyncIOTest(file_name, file_size);
+  std::string file_name = argv[1];
+  uint64_t file_size = 1024UL * 1024 * 100;
+
+  //SyncIOTest(file_name, file_size);
 
   uint64_t rqsts_per_batch = 32;
-  SimpleAsycIO(file_name, file_size, rqsts_per_batch);
+  //SimpleAsycIO(file_name, file_size, rqsts_per_batch);
 
+  printf("\n\n***********  Group submit aio::\n");
   GroupSubmitAsycIO(file_name, file_size, rqsts_per_batch);
+
+  printf("\n\n***********  Deep-queue aio::\n");
+  bool read = true;
+  uint64_t queue_depth = 512;
+  FullAsycIO(file_name, file_size, queue_depth, read);
 
   printf("PASS\n");
   return 0;

@@ -29,7 +29,8 @@ struct TaskItem {
   uint8_t *buffer;
   uint64_t size;
   uint64_t number_access;
-  pthread_mutex_t lock;
+  pthread_mutex_t lock_1;
+  pthread_mutex_t lock_2;
   pthread_t  thread_id;
   bool sequential;  // is it sequential / random workload?
 
@@ -51,38 +52,48 @@ struct TaskItem {
 };
 
 static void* AccessHybridMemoryRandomAccess(void *arg) {
-  struct timespec tstart, tend;
-  clock_gettime(CLOCK_REALTIME, &tstart);
   struct TaskItem *task = (struct TaskItem*)arg;
-  uint64_t number_of_pages = task->size >> PAGE_BITS;
+  uint64_t total_number_of_pages = task->size >> PAGE_BITS;
   uint32_t rand_seed =
-      (tstart.tv_nsec + (uint32_t)task->thread_id) % number_of_pages;
+      (NowInUsec() + (uint32_t)task->thread_id) % total_number_of_pages;
 
-  int64_t latency_usec = 0;
   task->read_latency_usec = new uint32_t[task->number_access];
   task->write_latency_usec = new uint32_t[task->number_access];
   assert(task->read_latency_usec && task->write_latency_usec);
 
-  uint64_t target_page_number;
-  uint64_t faults_step1, faults_step2;
   dbg("thread %d: work on file page range [%ld - %ld), %ld accesses\n",
       task->id,
       task->begin_page,
       task->begin_page + task->number_pages,
       task->number_access);
-
-  HybridMemoryStats();
   dbg("thread %d: found-pages=%ld, unfound-pages=%ld\n",
       task->id,
       FoundPages(),
       UnFoundPages());
-  faults_step1 = NumberOfPageFaults();
-
+  uint64_t faults_step1, faults_step2;
 
   //////////////////////////////////////////
-  pthread_mutex_lock(&task->lock);
+  // Prefault the pages.
+  pthread_mutex_lock(&task->lock_1);
   for (uint64_t i = 0; i < task->number_access; ++i) {
-    target_page_number =
+    uint64_t target_page_number = task->begin_page + (i % task->number_pages);
+    uint64_t* p =
+        (uint64_t*)(task->buffer + (target_page_number << PAGE_BITS) + 16);
+    *p = rand_r(&rand_seed);
+    task->expected_perpage_data[target_page_number] = *p;
+    if (i && i % 1000 == 0) {
+      printf("Task %d: prefault: %ld\n", task->id, i);
+    }
+  }
+  pthread_mutex_unlock(&task->lock_1);
+
+  //////////////////////////////////////////
+  // Start workload.
+  faults_step1 = NumberOfPageFaults();
+  HybridMemoryStats();
+  pthread_mutex_lock(&task->lock_2);
+  for (uint64_t i = 0; i < task->number_access; ++i) {
+    uint64_t target_page_number =
         task->begin_page + rand_r(&rand_seed) % task->number_pages;
     uint64_t* p =
       (uint64_t*)(task->buffer + (target_page_number << PAGE_BITS) + 16);
@@ -98,7 +109,7 @@ static void* AccessHybridMemoryRandomAccess(void *arg) {
       *p = rand_r(&rand_seed);
       task->expected_perpage_data[target_page_number] = *p;
     }
-    latency_usec = NowInUsec() - begin_usec;
+    uint64_t latency_usec = NowInUsec() - begin_usec;
     if (read && latency_usec > task->max_read_latency_usec) {
       task->max_read_latency_usec = latency_usec;
     } else if (latency_usec > task->max_write_latency_usec) {
@@ -110,13 +121,14 @@ static void* AccessHybridMemoryRandomAccess(void *arg) {
       task->write_latency_usec[task->number_writes++] = latency_usec;
     }
     if (i && i % 2000 == 0) {
-      printf("thread %d: random-work: %ld\n", task->id, i);
+      dbg("Thread %d: random-work: %ld\n", task->id, i);
     }
     ++task->actual_number_access;
   }
   faults_step2 = NumberOfPageFaults();
-  pthread_mutex_unlock(&task->lock);
-  dbg("thread %d: found-pages=%ld, unfound-pages=%ld\n",
+  pthread_mutex_unlock(&task->lock_2);
+
+  dbg("Thread %d: found-pages=%ld, unfound-pages=%ld\n",
       task->id,
       FoundPages(),
       UnFoundPages());
@@ -136,73 +148,68 @@ static void* AccessHybridMemoryRandomAccess(void *arg) {
 }
 
 static void* AccessHybridMemoryWriteThenRead(void *arg) {
-  struct timespec tstart, tend;
-  clock_gettime(CLOCK_REALTIME, &tstart);
   struct TaskItem *task = (struct TaskItem*)arg;
-  uint64_t number_of_pages = task->size >> PAGE_BITS;
+  uint64_t total_number_of_pages = task->size >> PAGE_BITS;
   uint32_t rand_seed =
-      (tstart.tv_nsec + (uint32_t)task->thread_id) % number_of_pages;
-  dbg("Thread %u: use rand-seed %d, num-pages %ld\n",
-      task->id,  //(uint32_t)task->thread_id,
-      rand_seed,
-      number_of_pages);
+      (NowInUsec() + (uint32_t)task->thread_id) % total_number_of_pages;
 
-  int64_t latency_ns = 0;
-  int64_t max_write_latency_ns = 0;
-  int64_t max_read_latency_ns = 0;
-  uint64_t target_page_number;
+  int64_t max_write_latency_usec = 0;
+  int64_t max_read_latency_usec = 0;
   uint64_t faults_step1, faults_step2, faults_step3;
 
-  printf("thread %d: work on file page range [%ld - %ld), %ld accesses\n",
-         task->id,
-         task->begin_page,
-         task->begin_page + task->number_pages,
-         task->number_access);
+  dbg("Thread %d: work on file page range [%ld - %ld), %ld accesses\n",
+      task->id,
+      task->begin_page,
+      task->begin_page + task->number_pages,
+      task->number_access);
   //////////////////////////////////////////
-  pthread_mutex_lock(&task->lock);
+  // Warm up the cache layers.
   // If we use hdd-file backed mmap(), the init data is all "F".
+  pthread_mutex_lock(&task->lock_1);
 #ifdef USE_MMAP
-  if (task->sequential) {
-    for (uint64_t i = 0; i < task->number_access; ++i) {
-      target_page_number = task->begin_page + (i % task->number_pages);
-      uint64_t* p =
-          (uint64_t*)(task->buffer + (target_page_number << PAGE_BITS) + 16);
+  for (uint64_t i = 0; i < task->number_access; ++i) {
+    uint64_t target_page_number = task->begin_page + (i % task->number_pages);
+    uint64_t* p =
+        (uint64_t*)(task->buffer + (target_page_number << PAGE_BITS) + 16);
+    if (task->sequential) {
+      // Assume the backing hdd file is all FF at beinning.
       assert(*p == 0xFFFFFFFFFFFFFFFF);
-      if (i && i % 1000 == 0) {
-        printf("use-mmap: prefault: %ld\n", i);
-      }
-      ++task->actual_number_access;
+    }
+    if (i && i % 2000 == 0) {
+      dbg("Thread %d: prefault: %ld\n", task->id, i);
     }
   }
-  HybridMemoryStats();
 #endif
+  pthread_mutex_unlock(&task->lock_1);
   faults_step1 = NumberOfPageFaults();
-  //////////////// Write round: sequential write to every page.
+  HybridMemoryStats();
+
+  pthread_mutex_lock(&task->lock_2);
+  //////////////////////////////////////////
+  // Write round: sequential write to every page.
   for (uint64_t i = 0; i < task->number_access; ++i) {
-    target_page_number = task->begin_page + (i % task->number_pages);
+    uint64_t target_page_number = task->begin_page + (i % task->number_pages);
     uint64_t* p =
       (uint64_t*)(task->buffer + (target_page_number << PAGE_BITS) + 16);
-    clock_gettime(CLOCK_REALTIME, &tstart);
-    if (i < (1ULL << 19) - 10) {
-      //assert(*p == 0xFFFFFFFFFFFFFFFF);
-    }
+    uint64_t begin_usec = NowInUsec();
     *p = target_page_number;
-    clock_gettime(CLOCK_REALTIME, &tend);
+    uint64_t latency_usec = NowInUsec() - begin_usec;
+    if (latency_usec > max_write_latency_usec) {
+      max_write_latency_usec = latency_usec;
+    }
+    if (i && i % 2000 == 0) {
+      dbg("Thread %d: write: %ld\n", task->id, i);
+    }
     ++task->actual_number_access;
-    latency_ns = (tend.tv_sec - tstart.tv_sec) * 1000000000 +
-                 (tend.tv_nsec - tstart.tv_nsec);
-    if (latency_ns > max_write_latency_ns) {
-      max_write_latency_ns = latency_ns;
-    }
-    if (i && i % 1000 == 0) {
-      printf("worker: write : %ld\n", i);
-    }
   }
   faults_step2 = NumberOfPageFaults();
-  dbg("hmem found-pages=%ld, unfound-pages=%ld\n", FoundPages(), UnFoundPages());
+  dbg("Thread %d: seq-write round: hmem found-pages=%ld, unfound-pages=%ld\n",
+      task->id, FoundPages(), UnFoundPages());
   HybridMemoryStats();
+  //////////////////////////////////////////
   /////////////////// Read round.
   for (uint64_t i = 0; i < task->number_access; ++i) {
+    uint64_t target_page_number;
     if (task->sequential) {
       target_page_number = task->begin_page + (i % task->number_pages);
     } else {
@@ -211,7 +218,7 @@ static void* AccessHybridMemoryWriteThenRead(void *arg) {
     }
     uint64_t* p =
       (uint64_t*)(task->buffer + (target_page_number << PAGE_BITS) + 16);
-    clock_gettime(CLOCK_REALTIME, &tstart);
+    uint64_t begin_usec = NowInUsec();
     if (*p != target_page_number) {
       if (task->sequential) {
         err("vaddr %p: should be 0x%lx, data = %lx\n", p, i, *p);
@@ -219,85 +226,41 @@ static void* AccessHybridMemoryWriteThenRead(void *arg) {
         err("vaddr %p: should be 0x%lx, data = %lx\n", p, target_page_number, *p);
       }
     }
-    clock_gettime(CLOCK_REALTIME, &tend);
     ++task->actual_number_access;
-    latency_ns = (tend.tv_sec - tstart.tv_sec) * 1000000000 +
-                 (tend.tv_nsec - tstart.tv_nsec);
-    if (latency_ns > max_read_latency_ns) {
-      max_read_latency_ns = latency_ns;
+    uint64_t latency_usec = NowInUsec() - begin_usec;
+    if (latency_usec > max_read_latency_usec) {
+      max_read_latency_usec = latency_usec;
     }
-    if (i && i % 1000 == 0) {
-      printf("worker: read: %ld\n", i);
+    if (i && i % 2000 == 0) {
+      dbg("Thread %d: read: %ld\n", task->id, i);
     }
   }
   faults_step3 = NumberOfPageFaults();
-  pthread_mutex_unlock(&task->lock);
-  dbg("hmem found-pages=%ld, unfound-pages=%ld\n", FoundPages(), UnFoundPages());
+  pthread_mutex_unlock(&task->lock_2);
+  dbg("Thread %d: read-round, hmem found-pages=%ld, unfound-pages=%ld\n",
+      task->id, FoundPages(), UnFoundPages());
   HybridMemoryStats();
   //////////////////////////////////////////
 
   // Report stats.
-  dbg("Thread %d: %s-access: max-write-latency = %f usec, max-read-lat = %f usec\n"
+  dbg("Thread %d: %s-access: max-write-latency = %ld usec, max-read-lat = %ld usec\n"
       "\t\twrite-round page faults=%ld, read-round page-faults = %ld\n",
       task->id,
       task->sequential ? "sequential" : "random",
-      max_write_latency_ns / 1000.0,
-      max_read_latency_ns / 1000.0,
+      max_write_latency_usec,
+      max_read_latency_usec,
       faults_step2 - faults_step1, faults_step3 - faults_step2);
   pthread_exit(NULL);
 }
-
-static void* AccessHybridMemory(void *arg) {
-  struct timespec tstart, tend;
-  clock_gettime(CLOCK_REALTIME, &tstart);
-  struct TaskItem *task = (struct TaskItem*)arg;
-  uint64_t number_of_pages = task->size >> PAGE_BITS;
-  uint32_t rand_seed =
-      (tstart.tv_nsec + (uint32_t)task->thread_id) % number_of_pages;
-  dbg("thread %u: use rand-seed %d, num-pages %ld\n",
-      (uint32_t)task->thread_id,
-      rand_seed,
-      number_of_pages);
-
-  int64_t latency_ns = 0;
-  int64_t max_latency_ns = 0;
-  pthread_mutex_lock(&task->lock);
-  for (uint64_t i = 0; i < task->number_access; ++i) {
-    //uint32_t page_number = rand_r(&rand_seed) % number_of_pages;
-    uint32_t page_number = i % number_of_pages;
-    uint8_t* p = (uint8_t*)(task->buffer + (page_number << PAGE_BITS) + 16);
-    clock_gettime(CLOCK_REALTIME, &tstart);
-    // 50% read, 50% write.
-    if (page_number % 2 == 0) {  // write-access
-      *p = 0xff;
-    } else {
-      if (*p != 0xff) {   // read-access
-        err("vaddr %p: data = %x\n", p, *p);
-      }
-    }
-    clock_gettime(CLOCK_REALTIME, &tend);
-    latency_ns = (tend.tv_sec - tstart.tv_sec) * 1000000000 +
-                 (tend.tv_nsec - tstart.tv_nsec);
-    if (latency_ns > max_latency_ns) {
-      max_latency_ns = latency_ns;
-    }
-  }
-  pthread_mutex_unlock(&task->lock);
-  dbg("Thread %u: max-latency = %f usec\n",
-      (uint32_t)task->thread_id,
-      max_latency_ns / 1000.0);
-  pthread_exit(NULL);
-}
-
 
 static void TestMultithreadAccess(char* flash_dir, char* hdd_file) {
   // Prepare hybrid-mem.
   uint64_t one_mega = 1024ULL * 1024;
   uint32_t num_hmem_instances = 1;
-  uint64_t page_buffer_size = one_mega * 1;
-  uint64_t ram_buffer_size = one_mega * 10; //200;
-  uint64_t ssd_buffer_size = one_mega * 50; //16 * 128;
-  uint64_t hdd_file_size = one_mega * 100; //5000;
+  uint64_t page_buffer_size = one_mega * 2;
+  uint64_t ram_buffer_size = one_mega * 20; //200;
+  uint64_t ssd_buffer_size = one_mega * 150; //16 * 128;
+  uint64_t hdd_file_size = one_mega * 150; //5000;
   if (!IsDir(flash_dir)) {
     err("Please give a flash dir: \"%s\" is not a dir\n", flash_dir);
     return;
@@ -311,66 +274,69 @@ static void TestMultithreadAccess(char* flash_dir, char* hdd_file) {
 
   // Allocate a big virt-memory, shared by all threads.
 #ifdef USE_MMAP
-  std::string hdd_file_s;
   if (!hdd_file || !IsFile(hdd_file)) {
-    hdd_file_s = "/tmp/hybridmemory/hddfile";
-  } else {
-    hdd_file_s = hdd_file;
+    err("Please provide a valid hdd file.\n");
+    return;
   }
+  std::string hdd_file_s = hdd_file;
+
   uint64_t vaddress_space_size = hdd_file_size;
-  uint64_t number_pages = vaddress_space_size / 4096;
-  uint64_t hdd_file_offset = one_mega * 10;
+  uint64_t total_number_pages = vaddress_space_size / 4096;
+  uint64_t hdd_file_offset = one_mega * 0;
   uint8_t *virtual_address =
       (uint8_t *)hmem_map(hdd_file_s, vaddress_space_size, hdd_file_offset);
   assert(virtual_address != NULL);
-  dbg("Use hmem-map()\n");
   uint64_t real_memory_pages = ram_buffer_size / 4096;
-  uint64_t access_memory_pages = hdd_file_size / 4096;
+  uint64_t access_vaddr_pages = hdd_file_size / 4096;
+  dbg("Use hmem-map()\n");
 #else
-  uint64_t number_pages = 1000ULL * 1000 * 10;
-  uint64_t vaddress_space_size = number_pages * 4096;
+  uint64_t total_number_pages = 1000ULL * 1000 * 10;
+  uint64_t vaddress_space_size = total_number_pages * 4096;
   uint8_t* virtual_address = (uint8_t*)hmem_alloc(vaddress_space_size);
   assert(virtual_address != NULL);
+  uint64_t real_memory_pages = ram_buffer_size / 4096;
+  uint64_t access_vaddr_pages = ssd_buffer_size / 4096;
   dbg("Use hmem-alloc()\n");
-  uint64_t access_memory_pages = ssd_buffer_size / 4096;
 #endif
 
-  uint64_t* expected_perpage_data = new uint64_t[number_pages];
+  uint64_t* expected_perpage_data = new uint64_t[total_number_pages];
   assert(expected_perpage_data != NULL);
   dbg("Prepare expected_data array: %p, size = %ld\n",
-      expected_perpage_data, sizeof(uint64_t) * number_pages);
-  for (uint64_t i = 0; i < number_pages; ++i) {
+      expected_perpage_data, sizeof(uint64_t) * total_number_pages);
+  for (uint64_t i = 0; i < total_number_pages; ++i) {
     expected_perpage_data[i] = 0xffffffffffffffff;
   }
 
   // Start parallel threads to access the virt-memory.
   uint32_t max_threads = 1;
   TaskItem tasks[max_threads];
-  uint64_t number_access = access_memory_pages;
-  //uint64_t number_access = 1000UL * 25;
+  uint64_t total_number_access = access_vaddr_pages;
 
   for (uint32_t number_threads = 1; number_threads <= max_threads;
        number_threads *= 2) {
     memset(tasks, 0, sizeof(TaskItem) * max_threads);
-    uint64_t per_task_pages = access_memory_pages / number_threads;
-    uint64_t per_task_access = number_access / number_threads;
+    uint64_t per_task_pages = access_vaddr_pages / number_threads;
+    uint64_t per_task_access = total_number_access / number_threads;
     uint64_t begin_page = 0;
     for (uint32_t i = 0; i < number_threads; ++i) {
+      tasks[i].id = i;
       tasks[i].begin_page = begin_page;
       tasks[i].number_pages = per_task_pages;
       tasks[i].number_access = per_task_access;
       tasks[i].actual_number_access = 0;
       tasks[i].expected_perpage_data = expected_perpage_data;
-      begin_page += per_task_pages;
 
       tasks[i].buffer = virtual_address;
       tasks[i].size = vaddress_space_size;
       tasks[i].sequential = false;
-      tasks[i].id = i;
       tasks[i].total_tasks = number_threads;
 
-      pthread_mutex_init(&tasks[i].lock, NULL);
-      pthread_mutex_lock(&tasks[i].lock);
+      begin_page += per_task_pages;
+
+      pthread_mutex_init(&tasks[i].lock_1, NULL);
+      pthread_mutex_init(&tasks[i].lock_2, NULL);
+      pthread_mutex_lock(&tasks[i].lock_1);
+      pthread_mutex_lock(&tasks[i].lock_2);
       assert(pthread_create(
                  &tasks[i].thread_id,
                  NULL,
@@ -379,23 +345,32 @@ static void TestMultithreadAccess(char* flash_dir, char* hdd_file) {
                  &tasks[i]) == 0);
     }
     sleep(1);
+
     ///////////////////////////
-    uint64_t p1_faults = NumberOfPageFaults();
-    uint64_t tstart = NowInUsec();
-    // Tell all theads to start.
+    // Tell all threads to warm up.
     for (uint32_t i = 0; i < number_threads; ++i) {
-      pthread_mutex_unlock(&tasks[i].lock);
+      pthread_mutex_unlock(&tasks[i].lock_1);
     }
+    sleep(2);
+    for (uint32_t i = 0; i < number_threads; ++i) {
+      pthread_mutex_lock(&tasks[i].lock_1);
+    }
+    // Tell all threads to start read workload.
+    uint64_t p1_faults = NumberOfPageFaults();
+    for (uint32_t i = 0; i < number_threads; ++i) {
+      pthread_mutex_unlock(&tasks[i].lock_2);
+    }
+    uint64_t tstart = NowInUsec();
     uint64_t total_accesses = 0;
     for (uint32_t i = 0; i < number_threads; ++i) {
       pthread_join(tasks[i].thread_id, NULL);
       total_accesses += tasks[i].actual_number_access;
     }
-    uint64_t tend = NowInUsec();
+    uint64_t total_usec = NowInUsec() - tstart;
+
     ///////////////////////////
     uint64_t p2_faults = NumberOfPageFaults();
     uint64_t number_faults = p2_faults - p1_faults;
-    uint64_t total_usec = tend - tstart;
 
     // Per-thread percentile latency for read and write.
     printf("\nThread_id\tRead_ops\t50-lat(usec)\t90-lat(usec)\t95-lat(usec)"

@@ -9,9 +9,13 @@
 #include <unistd.h>
 
 int main(int argc, char **argv) {
-  printf("size of pthread_mutex = %ld\n", sizeof(pthread_mutex_t));
-
-  const char *hdd_filename = "/tmp/hybridmemory/hddfile";
+  if (argc < 2) {
+    printf("Create a file.\n"
+           "Usage: %s  [file name] \n",
+           argv[0]);
+    return 0;
+  }
+  const char *hdd_filename = argv[1];
   int fd = open(hdd_filename, O_CREAT | O_LARGEFILE |O_RDWR, 0666);
   uint8_t buffer[4096];
 

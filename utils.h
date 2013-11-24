@@ -16,6 +16,8 @@ uint64_t RoundUpToPageSize(uint64_t size);
 // Get current time in micro-seconds.
 uint64_t NowInUsec();
 
+bool FSObjectExist(const char* path);
+
 bool IsDir(const char* path);
 
 bool IsFile(const char* path);

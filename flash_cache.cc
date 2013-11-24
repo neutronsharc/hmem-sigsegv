@@ -139,9 +139,14 @@ uint32_t FlashCache::MigrateToHDD(
     aio_manager = hybrid_memory_->asyncio_manager();
   }
   bool use_asyncio = support_asyncio;
+  if (support_asyncio &&
+      aio_manager->number_free_requests() <= flash_pages_writeto_hdd.size()) {
+    use_asyncio = false;
+  }
   uint64_t asyncio_copy_read_requests = 0;
   uint64_t asyncio_copy_write_requests = 0;
   uint64_t asyncio_completions = 0;
+  std::vector<AsyncIORequest*> requests;
 
   uint64_t tstart = NowInUsec();
   for (uint64_t i = 0; i < flash_pages_writeto_hdd.size(); ++i) {
@@ -213,29 +218,22 @@ uint32_t FlashCache::MigrateToHDD(
         AsyncIORequest *request  = aio_manager->GetRequest();
         AsyncIORequest *followup_request  = aio_manager->GetRequest();
         if (request == NULL || followup_request == NULL) {
-            use_asyncio = false;
+          err("Insufficient aio requests.\n");
+          assert(0);
         } else {
           request->Prepare(flash_fd_, data_buffer, io_size,
                            flash_page_number << PAGE_BITS, READ);
           followup_request->Prepare(vaddress_range->hdd_file_fd(), data_buffer,
                                     io_size, hdd_file_offset, WRITE);
           request->AddCompletionCallback(MoveToHDDReadCompletion,
-                                         (void *)followup_request, &asyncio_copy_write_requests);
+                                         (void *)followup_request,
+                                         &asyncio_copy_write_requests);
           followup_request->AddCompletionCallback(MoveToHDDWriteCompletion,
                                                   (void *)v2hmap,
                                                   (void *)(&aux_buffer_list_));
-          if (aio_manager->Submit(request) == false) {
-            err("Unable to submit async io.\n");
-            request->Dump();
-            use_asyncio = false;
-            // TODO: release the requests to aio manager.
-          } else {
-            ++asyncio_copy_read_requests;
-            asyncio_completions += aio_manager->Poll(2);
-          }
+          requests.push_back(request);
         }
-      }
-      if (!support_asyncio || !use_asyncio) {
+      } else {
         assert(pread(flash_fd_, data_buffer, io_size,
                      flash_page_number << PAGE_BITS) == io_size);
         assert(pwrite(vaddress_range->hdd_file_fd(), data_buffer, io_size,
@@ -248,19 +246,24 @@ uint32_t FlashCache::MigrateToHDD(
       }
     }
   }
-  uint64_t expire_time = NowInUsec() + 2 * 1000000;
-  while (asyncio_completions < asyncio_copy_read_requests * 2) {
-    asyncio_completions += aio_manager->Poll(1);
-    if (NowInUsec() > expire_time) {
-      break;
+  if (support_asyncio && use_asyncio) {
+    assert(aio_manager->Submit(requests) == true);
+    asyncio_copy_read_requests += requests.size();
+    uint64_t expire_time = NowInUsec() + 2 * 1000000;
+    while (asyncio_completions < asyncio_copy_read_requests * 2) {
+      // TODO: can usleep(1000) to reduce CPU overhead.
+      asyncio_completions += aio_manager->Poll(1);
+      if (NowInUsec() > expire_time) {
+        break;
+      }
     }
-  }
-  if (asyncio_copy_read_requests + asyncio_copy_write_requests >
-      asyncio_completions) {
-    dbg("Timeout, issued %ld copy-read, %ld copy-write, got %ld "
-        "completions\n",
-        asyncio_copy_read_requests, asyncio_copy_write_requests,
-        asyncio_completions);
+    if (asyncio_copy_read_requests + asyncio_copy_write_requests >
+        asyncio_completions) {
+      dbg("Timeout, issued %ld copy-read, %ld copy-write, got %ld "
+          "completions\n",
+          asyncio_copy_read_requests, asyncio_copy_write_requests,
+          asyncio_completions);
+    }
   }
   uint64_t latency_usec = NowInUsec() - tstart;
   if (latency_usec > max_evict2hdd_latency_usec_) {

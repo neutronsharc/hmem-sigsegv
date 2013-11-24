@@ -18,6 +18,16 @@ uint64_t NowInUsec() {
   return ts.tv_sec * 1000000 + ts.tv_nsec / 1000;
 }
 
+bool FSObjectExist(const char* path) {
+  struct stat sinfo;
+  if (stat(path, &sinfo) < 0) {
+    err("The FS object not exist: %s\n", path);
+    perror("stat: ");
+    return false;
+  }
+  return true;
+}
+
 bool IsDir(const char* path) {
   struct stat sinfo;
   if (stat(path, &sinfo) < 0) {
