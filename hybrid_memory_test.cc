@@ -258,16 +258,16 @@ static void* AccessHybridMemoryWriteThenRead(void *arg) {
 
 static void TestMultithreadAccess(char* flash_dir, char* hdd_file) {
   // Prepare hybrid-mem.
-  uint32_t max_threads = 1;
-  uint32_t num_hmem_instances = 1;
+  uint32_t max_threads = 16;
+  uint32_t num_hmem_instances = 16;
   // r-w ratio:   100: read only,  50: r/w half,  0: write-only.
   uint32_t read_write_ratio = 50;
 
   uint64_t one_mega = 1024ULL * 1024;
   uint64_t page_buffer_size = one_mega * 1;
-  uint64_t ram_buffer_size = one_mega * 100; //200;
-  uint64_t ssd_buffer_size = one_mega * 1000; //16 * 128;
-  uint64_t hdd_file_size = one_mega * 1000; //5000;
+  uint64_t ram_buffer_size = one_mega * 96; //200;
+  uint64_t ssd_buffer_size = one_mega * 20000; //16 * 128;
+  uint64_t hdd_file_size = one_mega * 20000; //5000;
   if (!IsDir(flash_dir)) {
     err("Please give a flash dir: \"%s\" is not a dir\n", flash_dir);
     return;

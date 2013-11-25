@@ -375,7 +375,7 @@ void SimpleAsycIO(std::string file_name, uint64_t file_size, uint64_t rqst_per_b
 }
 
 // Simple sync-io: random, one-by-one.
-void SyncIOTest(std::string file_name, uint64_t file_size) {
+void SyncIOTest(std::string file_name, uint64_t file_size, bool read) {
   int fd = open(file_name.c_str(), O_RDWR | O_DIRECT, 0666);
   assert(fd > 0);
 
@@ -400,10 +400,6 @@ void SyncIOTest(std::string file_name, uint64_t file_size) {
   uint32_t rand_seed = (uint32_t)time_begin;
   for (uint64_t i = 0; i < total_accesses; ++i) {
     uint64_t target_page = rand_r(&rand_seed) % file_pages;
-    bool read = true;
-    if (rand_r(&rand_seed) % 100 > 50) {
-      read = false;
-    }
     if (read == true) {
       t1 = NowInUsec();
       if (pread(fd, data_buffer, iosize, target_page * PAGE_SIZE) != iosize) {
@@ -421,7 +417,7 @@ void SyncIOTest(std::string file_name, uint64_t file_size) {
       if (t2 > max_write_latency_usec) max_write_latency_usec = t2;
       ++number_writes;
     }
-    if (i && i % 1000 == 0) {
+    if (i && i % 2000 == 0) {
       dbg("Sync IO: %ld...\n", i);
     }
   }
@@ -447,9 +443,11 @@ int main(int argc, char **argv) {
   }
 
   std::string file_name = argv[1];
-  uint64_t file_size = 1024UL * 1024 * 1500;
+  uint64_t file_size = 1024UL * 1024 * 150;
 
-  //SyncIOTest(file_name, file_size);
+  bool read = false;
+
+  SyncIOTest(file_name, file_size, read);
 
   uint64_t rqsts_per_batch = 32;
   //SimpleAsycIO(file_name, file_size, rqsts_per_batch);
@@ -457,10 +455,9 @@ int main(int argc, char **argv) {
   //printf("\n\n***********  Group submit aio::\n");
   //GroupSubmitAsycIO(file_name, file_size, rqsts_per_batch);
 
-  printf("\n\n***********  Deep-queue aio::\n");
-  bool read = true;
-  uint64_t queue_depth = atoi(argv[2]);
-  FullAsycIO(file_name, file_size, queue_depth, read);
+  //printf("\n\n***********  Deep-queue aio::\n");
+  //uint64_t queue_depth = atoi(argv[2]);
+  //FullAsycIO(file_name, file_size, queue_depth, read);
 
   printf("PASS\n");
   return 0;

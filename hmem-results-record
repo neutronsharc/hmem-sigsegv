@@ -5,6 +5,13 @@ performance test on samsung 840 Pro SSD 128GB
 	latency in usec,  throughput in ops/second.
 
 native perf of the SSD::
+
+rand_read_lat    rand_write_lat
+117 us		50 us
+
+Sync IO: total 38400 ops (38400 reads, 0 writes) in 4.507628 sec, 8518.892863 ops/sec
+avg-lat = 117 usec, max-read-lat 1310 usec, max-write-lat 0 usec
+
 libaio, queue-depth = 256-2048: (about same perf)
 	*** random read only:
 Full-Async-io: queue-depth=256, 384000 ops (384000 reads, 0 writes) in 7.372725 sec, 
