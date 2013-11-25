@@ -1,4 +1,265 @@
 
+========================================================================================================================================
+========================================================================================================================================
+performance test on samsung 840 Pro SSD 128GB
+	latency in usec,  throughput in ops/second.
+
+native perf of the SSD::
+libaio, queue-depth = 256-2048: (about same perf)
+	*** random read only:
+Full-Async-io: queue-depth=256, 384000 ops (384000 reads, 0 writes) in 7.372725 sec, 
+52083.863158 ops/sec, avg-lat = 19 usec, bandwidth=213.335503 MB/s
+	** seq read only:
+Full-Async-io: queue-depth=2048, 384000 ops (384000 reads, 0 writes) in 5.497263 sec, 
+69852.943183 ops/sec, avg-lat = 14 usec, bandwidth=286.117655 MB/s
+	**** random-write only:
+Full-Async-io: queue-depth=2048, 384000 ops (0 reads, 384000 writes) in 7.831634 sec, 
+49031.913391 ops/sec, avg-lat = 20 usec, bandwidth=200.834717 MB/s
+	**** seq-write only:
+Full-Async-io: queue-depth=2048, 384000 ops (0 reads, 384000 writes) in 5.751192 sec, 
+66768.767240 ops/sec, avg-lat = 14 usec, bandwidth=273.484871 MB/s
+
+		*******************
+Case 1::  ram-cache is big enough to hold all working set, 50-50 r/w
+
+page-cache 1MB,  ram-buffer 96 MB,  flash-cache 2000 MB,  hdd-file 2000MB
+
+		read-only:   1 threads:
+Thread_id	Read_ops	avg-lat(usec)	50-lat(usec)	90-lat(usec)	95-lat(usec)	99-lat(usec)	max(usec)
+0	25600	7	5	22	24	25	167
+0	25600	7	5	22	24	25	147
+0	25600	7	5	12	24	25	134
+	----------------------- Stats --------------------
+1 threads, 25600 access, 25349 page faults in 0.192538 sec, 
+ 7.521016 usec/access, throughput = 132960 access / sec
+1 threads, 25600 access, 25364 page faults in 0.189271 sec, 
+ 7.393398 usec/access, throughput = 135255 access / sec
+1 threads, 25600 access, 25356 page faults in 0.189079 sec, 
+ 7.385898 usec/access, throughput = 135393 access / sec
+
+		50-50 r/w:   1 thread
+Thread_id	Read_ops	avg-lat(usec)	50-lat(usec)	90-lat(usec)	95-lat(usec)	99-lat(usec)	max(usec)
+0	12283	7	5	14	26	28	211
+Thread_id	Write_ops	avg-lat(usec)	50-lat(usec)	90-lat(usec)	95-lat(usec)	99-lat(usec)	max-lat(usec)
+0	12293	7	5	24	26	28	217
+1 threads, 24576 access, 24377 page faults in 0.186356 sec, 
+ 7.582845 usec/access, throughput = 131876 access / sec
+
+		100 write, 1 thread
+Thread_id	Write_ops	avg-lat(usec)	50-lat(usec)	90-lat(usec)	95-lat(usec)	99-lat(usec)	max-lat(usec)
+0	25600	7	5	26	28	31	187
+0	25600	7	5	19	29	31	171
+----------------------- Stats --------------------
+1 threads, 25600 access, 25361 page faults in 0.200166 sec, 
+ 7.818984 usec/access, throughput = 127893 access / sec
+1 threads, 25600 access, 25325 page faults in 0.197397 sec, 
+ 7.710820 usec/access, throughput = 129687 access / sec
+
+
+
+
+		*******************
+Case 2::  ram-cache is very small compared to working set, all data cached in flash.
+
+Since workload is highly random, small page-cache leads to less vm-areas to search at a page-fault, and helps
+improve latency/throughput.   =>> use total 1MB page-cache.
+
+pre-fault all data pages to flash, then start worker threads:
+
+1. threads warm up the vaddr space by pre faulting.
+2. start random r/w. 
+
+	case 2.1:  read-only:
+
+Num_threads throughput  avg-lat(usec) 50-lat(usec)	90-lat(usec)	95-lat(usec)	99-lat(usec)	max(usec)
+1           6899     144      143     185        204       220     4792         
+2           8830     225      180     347        421       705    14031
+4           13394    299      235     516        639      1071    13135      
+8           20288    400      299     719        858      1202    19560   
+16          24422    660      427     1430       1699     2397    11578 
+
+			1 threads
+Thread_id	Read_ops	avg-lat(usec)	50-lat(usec)	90-lat(usec)	95-lat(usec)	99-lat(usec)	max(usec)
+0	307200	144	143	185	204	220	4792
+	----------------------- Stats --------------------
+1 threads, 307200 access, 306943 page faults in 44.522533 sec, 
+ 144.930120 usec/access, throughput = 6899 access / sec
+
+			2 threads
+Thread_id	Read_ops	avg-lat(usec)	50-lat(usec)	90-lat(usec)	95-lat(usec)	99-lat(usec)	max(usec)
+0	256000	225	180	347	421	705	14031
+1	256000	227	180	348	424	709	12493
+		----------------------- Stats --------------------
+2 threads, 512000 access, 511779 page faults in 57.978400 sec, 
+ 113.239063 usec/access, throughput = 8830 access / sec
+
+			4 threads
+Thread_id	Read_ops	avg-lat(usec)	50-lat(usec)	90-lat(usec)	95-lat(usec)	99-lat(usec)	max(usec)
+0	128000	299	235	516	639	1071	13135
+1	128000	298	235	518	638	1060	13350
+2	128000	301	234	518	639	1061	12052
+3	128000	302	235	516	636	1059	12029
+		----------------------- Stats --------------------
+4 threads, 512000 access, 511707 page faults in 38.223455 sec, 
+ 74.655186 usec/access, throughput = 13394 access / sec
+
+			8 threads
+Thread_id	Read_ops	avg-lat(usec)	50-lat(usec)	90-lat(usec)	95-lat(usec)	99-lat(usec)	max(usec)
+0	64000	400	299	719	858	1202	19560
+1	64000	396	298	723	862	1205	19417
+2	64000	404	298	720	855	1204	17135
+3	64000	394	298	724	860	1206	17028
+4	64000	401	296	719	860	1194	18303
+5	64000	395	297	723	859	1214	17811
+6	64000	397	299	722	858	1204	19082
+7	64000	398	297	721	858	1202	19207
+	----------------------- Stats --------------------
+8 threads, 512000 access, 511690 page faults in 25.235746 sec, 
+ 49.288566 usec/access, throughput = 20288 access / sec
+
+				16 threads
+Thread_id	Read_ops	avg-lat(usec)	50-lat(usec)	90-lat(usec)	95-lat(usec)	99-lat(usec)	max(usec)
+0	32000	660	427	1430	1699	2397	11578
+1	32000	673	428	1437	1697	2381	11389
+2	32000	657	427	1442	1705	2408	12158
+3	32000	655	427	1431	1707	2480	14406
+4	32000	663	429	1437	1698	2402	12178
+5	32000	661	428	1442	1705	2370	14111
+6	32000	660	427	1431	1696	2394	11282
+7	32000	667	425	1436	1705	2457	14870
+8	32000	654	424	1441	1703	2445	10959
+9	32000	653	427	1429	1694	2381	14339
+10	32000	666	425	1442	1704	2464	14172
+11	32000	658	427	1439	1707	2420	10642
+12	32000	657	426	1440	1704	2377	13141
+13	32000	659	426	1435	1705	2436	15805
+14	32000	655	427	1438	1701	2410	11044
+15	32000	656	426	1436	1709	2409	10759
+		----------------------- Stats --------------------
+16 threads, 512000 access, 511751 page faults in 20.964360 sec, 
+ 40.946016 usec/access, throughput = 24422 access / sec
+
+
+		********************
+	case 2.2:  50%-50% read-write, random r/w:    read:
+num_threads  throughput       avg-lat    50%-lat   90%-lat    95%-lat     99%-lat       max-lat avg-lat
+1	    5321           187       145      214      604      903        8064     
+2	    7852           254       161      404      932      1582       10902
+4           10784          383       193      952      1419     2554       9971
+8           14170          564       238      1571     2200     3701       14642
+16          16552          963       394      2630     3469     5219       17003
+32          19479          1642      817      4527     5803     8119       17960
+
+
+		1 threads, 50-50
+Thread_id	Read_ops	avg-lat(usec)	50-lat(usec)	90-lat(usec)	95-lat(usec)	99-lat(usec)	max(usec)
+0	153585	187	145	214	604	903	8064
+Thread_id	Write_ops	avg-lat(usec)	50-lat(usec)	90-lat(usec)	95-lat(usec)	99-lat(usec)	max-lat(usec)
+0	153615	187	143	212	603	901	7803
+	----------------------- Stats --------------------
+1 threads, 307200 access, 307014 page faults in 57.727695 sec, 
+ 187.915674 usec/access, throughput = 5321 access / sec
+
+		2 threads, 50-50
+Thread_id	Read_ops	avg-lat(usec)	50-lat(usec)	90-lat(usec)	95-lat(usec)	99-lat(usec)	max(usec)
+0	76957	254	161	404	932	1582	10902
+1	77075	253	161	388	916	1567	10168
+Thread_id	Write_ops	avg-lat(usec)	50-lat(usec)	90-lat(usec)	95-lat(usec)	99-lat(usec)	max-lat(usec)
+0	76643	254	156	403	918	1570	10537
+1	76525	253	156	398	919	1587	7882
+	----------------------- Stats --------------------
+2 threads, 307200 access, 307045 page faults in 39.122812 sec, 
+ 127.352904 usec/access, throughput = 7852 access / sec
+
+		4 threads, 50-50
+Thread_id	Read_ops	avg-lat(usec)	50-lat(usec)	90-lat(usec)	95-lat(usec)	99-lat(usec)	max(usec)
+0	38312	383	193	960	1436	2592	9089
+1	38502	380	193	966	1448	2578	9882
+2	38237	371	193	952	1423	2554	9971
+3	38377	370	192	951	1419	2632	8580
+Thread_id	Write_ops	avg-lat(usec)	50-lat(usec)	90-lat(usec)	95-lat(usec)	99-lat(usec)	max-lat(usec)
+0	38488	383	183	975	1415	2563	9988
+1	38298	380	182	937	1411	2540	16079
+2	38563	371	183	970	1420	2565	14879
+3	38423	370	183	968	1440	2556	9131
+		----------------------- Stats --------------------
+4 threads, 307200 access, 306940 page faults in 28.484083 sec, 
+ 92.721624 usec/access, throughput = 10784 access / sec
+
+		***  8  threads,  50-50 r/w
+Thread_id	Read_ops	avg-lat(usec)	50-lat(usec)	90-lat(usec)	95-lat(usec)	99-lat(usec)	max(usec)
+0	32256	564	238	1571	2200	3701	14642
+1	31935	571	237	1550	2171	3703	12866
+2	32106	569	238	1572	2186	3533	12950
+3	32269	568	239	1571	2185	3697	11515
+4	31871	562	240	1577	2189	3636	13758
+5	32098	567	240	1581	2215	3680	14846
+6	32135	572	239	1549	2165	3563	14181
+7	32050	568	237	1550	2164	3630	13942
+Thread_id	Write_ops	avg-lat(usec)	50-lat(usec)	90-lat(usec)	95-lat(usec)	99-lat(usec)	max-lat(usec)
+0	31744	564	227	1533	2157	3644	13501
+1	32065	571	228	1557	2188	3699	15028
+2	31894	569	226	1552	2164	3586	14401
+3	31731	568	227	1550	2139	3606	14996
+4	32129	562	226	1526	2154	3655	14063
+5	31902	567	225	1541	2139	3558	14477
+6	31865	572	227	1567	2200	3663	12236
+7	31950	568	226	1546	2164	3564	12493
+		----------------------- Stats --------------------
+8 threads, 512000 access, 511770 page faults in 36.131255 sec, 
+ 70.568857 usec/access, throughput = 14170 access / sec
+
+		***   16 threads,  50-50-rw
+Thread_id	Read_ops	avg-lat(usec)	50-lat(usec)	90-lat(usec)	95-lat(usec)	99-lat(usec)	max(usec)
+0	15893	963	394	2630	3469	5219	13046
+1	15807	966	393	2656	3578	5317	17003
+2	16103	971	387	2617	3479	5067	14524
+3	15948	971	395	2607	3453	5162	16874
+4	15957	962	399	2675	3551	5275	17518
+5	16052	960	393	2634	3477	5120	11230
+6	16026	962	389	2650	3534	5273	15686
+7	15922	961	397	2660	3478	5109	13718
+8	15951	968	393	2691	3543	5255	16685
+9	16037	968	393	2688	3531	5287	13170
+10	15988	977	389	2649	3513	5194	16689
+11	15938	970	385	2719	3567	5217	13178
+12	16047	970	397	2696	3586	5346	16100
+13	16067	969	390	2668	3541	5169	14046
+14	16110	975	391	2661	3521	5207	14962
+15	16054	977	394	2646	3505	5162	13591
+Thread_id	Write_ops	avg-lat(usec)	50-lat(usec)	90-lat(usec)	95-lat(usec)	99-lat(usec)	max-lat(usec)
+0	16107	963	379	2657	3500	5056	14354
+1	16193	966	373	2621	3470	5114	16906
+2	15897	971	389	2653	3513	5111	15519
+3	16052	971	371	2669	3557	5389	13929
+4	16043	962	373	2576	3514	5157	13883
+5	15948	960	377	2677	3545	5201	16085
+6	15974	962	371	2622	3494	5183	15136
+7	16078	961	373	2619	3497	5225	12920
+8	16049	968	374	2633	3475	4956	15740
+9	15963	968	372	2643	3503	5242	14048
+10	16012	977	378	2674	3518	5183	14391
+11	16062	970	377	2674	3475	5105	18255
+12	15953	970	377	2634	3457	5256	16149
+13	15933	969	377	2630	3506	5171	16480
+14	15890	975	381	2651	3508	5242	15545
+15	15946	977	387	2664	3493	5077	18266
+	----------------------- Stats --------------------
+16 threads, 512000 access, 511774 page faults in 30.932228 sec, 
+ 60.414508 usec/access, throughput = 16552 access / sec
+
+
+			******	case 2.3: 100% write, random r/w
+	
+
+
+
+
+
+========================================================================================================================================
+========================================================================================================================================
+
+
 
 
 Very basic sync-IO vs. async-io (libaio):

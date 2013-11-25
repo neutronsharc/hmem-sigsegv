@@ -3,24 +3,25 @@
 #include <pthread.h>
 #include <stdio.h>
 #include <stdint.h>
+#include <stdlib.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <string.h>
 #include <unistd.h>
 
 int main(int argc, char **argv) {
-  if (argc < 2) {
+  if (argc != 3) {
     printf("Create a file.\n"
-           "Usage: %s  [file name] \n",
+           "Usage: %s  [file name] [size in MB]\n",
            argv[0]);
     return 0;
   }
   const char *hdd_filename = argv[1];
+  uint64_t hdd_file_size = atoi(argv[2]) * 1024UL * 1024;
   int fd = open(hdd_filename, O_CREAT | O_LARGEFILE |O_RDWR, 0666);
   uint8_t buffer[4096];
 
   memset(buffer, 0xff, 4096);
-  uint64_t hdd_file_size = 1024UL * 1024 * 150;
   uint64_t i;
   for (i = 0; i < hdd_file_size; i += 4096) {
     pwrite(fd, buffer, 4096, i);

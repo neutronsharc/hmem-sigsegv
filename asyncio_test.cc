@@ -178,6 +178,7 @@ void FullAsycIO(std::string file_name, uint64_t file_size,
         buffer_list.size() > 0 &&
         aio_manager.number_free_requests() > 0) {
       uint64_t target_page = rand_r(&rand_seed) % file_pages;
+      //uint64_t target_page = issued_rqst % file_pages;
       AsyncIORequest *request = aio_manager.GetRequest();
       uint8_t* buf = buffer_list.back();
       buffer_list.pop_back();
@@ -192,11 +193,8 @@ void FullAsycIO(std::string file_name, uint64_t file_size,
       else ++number_writes;
       if (number_reads + number_writes)
       ++issued_rqst;
-      if (issued_rqst && (issued_rqst % 1000 == 0)) {
+      if (issued_rqst && (issued_rqst % 10000 == 0)) {
         dbg("issued %ld rqsts\n", issued_rqst);
-      }
-      if (number_completions < number_reads + number_writes) {
-        number_completions += aio_manager.Poll(1);
       }
     }
     if (number_completions < number_reads + number_writes) {
@@ -441,27 +439,27 @@ void SyncIOTest(std::string file_name, uint64_t file_size) {
 }
 
 int main(int argc, char **argv) {
-  if (argc < 2) {
+  if (argc < 3) {
     printf("Async IO test.\n"
-           "Usage: %s  [r/w file] \n",
+           "Usage: %s  [r/w file] [queue-depth]\n",
            argv[0]);
     return 0;
   }
 
   std::string file_name = argv[1];
-  uint64_t file_size = 1024UL * 1024 * 100;
+  uint64_t file_size = 1024UL * 1024 * 1500;
 
   //SyncIOTest(file_name, file_size);
 
   uint64_t rqsts_per_batch = 32;
   //SimpleAsycIO(file_name, file_size, rqsts_per_batch);
 
-  printf("\n\n***********  Group submit aio::\n");
-  GroupSubmitAsycIO(file_name, file_size, rqsts_per_batch);
+  //printf("\n\n***********  Group submit aio::\n");
+  //GroupSubmitAsycIO(file_name, file_size, rqsts_per_batch);
 
   printf("\n\n***********  Deep-queue aio::\n");
   bool read = true;
-  uint64_t queue_depth = 512;
+  uint64_t queue_depth = atoi(argv[2]);
   FullAsycIO(file_name, file_size, queue_depth, read);
 
   printf("PASS\n");
