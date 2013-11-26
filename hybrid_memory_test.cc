@@ -92,10 +92,10 @@ static void* AccessHybridMemoryRandomAccess(void *arg) {
 
   //////////////////////////////////////////
   // Start workload.
-  uint64_t begin_usec = NowInUsec();
   faults_step1 = NumberOfPageFaults();
   HybridMemoryStats();
   pthread_mutex_lock(&task->lock_2);
+  uint64_t begin_usec = NowInUsec();
   for (uint64_t i = 0; i < task->number_access; ++i) {
     uint64_t target_page_number =
         task->begin_page + rand_r(&rand_seed) % task->number_pages;
@@ -258,16 +258,16 @@ static void* AccessHybridMemoryWriteThenRead(void *arg) {
 
 static void TestMultithreadAccess(char* flash_dir, char* hdd_file) {
   // Prepare hybrid-mem.
-  uint32_t max_threads = 16;
-  uint32_t num_hmem_instances = 16;
+  uint32_t max_threads = 1;
+  uint32_t num_hmem_instances = 1;
   // r-w ratio:   100: read only,  50: r/w half,  0: write-only.
   uint32_t read_write_ratio = 50;
 
   uint64_t one_mega = 1024ULL * 1024;
-  uint64_t page_buffer_size = one_mega * 1;
+  uint64_t page_buffer_size = 4096UL * 16; //one_mega * 1;
   uint64_t ram_buffer_size = one_mega * 96; //200;
-  uint64_t ssd_buffer_size = one_mega * 20000; //16 * 128;
-  uint64_t hdd_file_size = one_mega * 20000; //5000;
+  uint64_t ssd_buffer_size = one_mega * 50; //16 * 128;
+  uint64_t hdd_file_size = one_mega * 50; //5000;
   if (!IsDir(flash_dir)) {
     err("Please give a flash dir: \"%s\" is not a dir\n", flash_dir);
     return;
@@ -381,46 +381,50 @@ static void TestMultithreadAccess(char* flash_dir, char* hdd_file) {
 
     // Per-thread percentile latency for read and write.
     if (read_write_ratio > 0) {
-    printf("\nThread_id\tRead_ops\tavg-lat(usec)\t50-lat(usec)\t90-lat(usec)"
-           "\t95-lat(usec)\t99-lat(usec)\tmax(usec)\n");
-    for (uint32_t i = 0; i < number_threads; ++i) {
-      if (tasks[i].read_latency_usec != NULL) {
-        uint64_t number_reads = tasks[i].number_reads;
-        std::vector<uint32_t> values(tasks[i].read_latency_usec,
-                                     tasks[i].read_latency_usec + number_reads);
-        std::sort(values.begin(), values.end());
-        printf("%d\t%ld\t%ld\t%d\t%d\t%d\t%d\t%ld\n", i, number_reads,
-               tasks[i].workload_time_usec / tasks[i].actual_number_access,
-               values[(int)(number_reads * 0.5)],
-               values[(int)(number_reads * 0.9)],
-               values[(int)(number_reads * 0.95)],
-               values[(int)(number_reads * 0.99)],
-               tasks[i].max_read_latency_usec);
+      printf("\nThread_id\tRead_ops\tavg-lat(usec)\t50-lat(usec)\t90-lat(usec)"
+             "\t95-lat(usec)\t99-lat(usec)\tmax(usec)\n");
+      for (uint32_t i = 0; i < number_threads; ++i) {
+        if (tasks[i].read_latency_usec != NULL) {
+          uint64_t number_reads = tasks[i].number_reads;
+          std::vector<uint32_t> values(tasks[i].read_latency_usec,
+                                       tasks[i].read_latency_usec +
+                                           number_reads);
+          std::sort(values.begin(), values.end());
+          printf("%d\t%ld\t%ld\t%d\t%d\t%d\t%d\t%ld\n", i, number_reads,
+                 tasks[i].workload_time_usec / tasks[i].actual_number_access,
+                 values[(int)(number_reads * 0.5)],
+                 values[(int)(number_reads * 0.9)],
+                 values[(int)(number_reads * 0.95)],
+                 values[(int)(number_reads * 0.99)],
+                 tasks[i].max_read_latency_usec);
+        }
       }
     }
-    }
     if (read_write_ratio < 100) {
-    printf("\nThread_id\tWrite_ops\tavg-lat(usec)\t50-lat(usec)\t90-lat(usec)"
-           "\t95-lat(usec)\t99-lat(usec)\tmax-lat(usec)\n");
-    for (uint32_t i = 0; i < number_threads; ++i) {
-      if (tasks[i].write_latency_usec != NULL) {
-        uint64_t number_writes = tasks[i].number_writes;
-        std::vector<uint32_t> values(tasks[i].write_latency_usec,
-                                     tasks[i].write_latency_usec + number_writes);
-        std::sort(values.begin(), values.end());
-        printf("%d\t%ld\t%ld\t%d\t%d\t%d\t%d\t%ld\n", i, number_writes,
-               tasks[i].workload_time_usec / tasks[i].actual_number_access,
-               values[(int)(number_writes * 0.5)],
-               values[(int)(number_writes * 0.9)],
-               values[(int)(number_writes * 0.95)],
-               values[(int)(number_writes * 0.99)],
-               tasks[i].max_write_latency_usec);
+      printf("\nThread_id\tWrite_ops\tavg-lat(usec)\t50-lat(usec)\t90-lat(usec)"
+             "\t95-lat(usec)\t99-lat(usec)\tmax-lat(usec)\n");
+      for (uint32_t i = 0; i < number_threads; ++i) {
+        if (tasks[i].write_latency_usec != NULL) {
+          uint64_t number_writes = tasks[i].number_writes;
+          std::vector<uint32_t> values(tasks[i].write_latency_usec,
+                                       tasks[i].write_latency_usec +
+                                           number_writes);
+          std::sort(values.begin(), values.end());
+          printf("%d\t%ld\t%ld\t%d\t%d\t%d\t%d\t%ld\n", i, number_writes,
+                 tasks[i].workload_time_usec / tasks[i].actual_number_access,
+                 values[(int)(number_writes * 0.5)],
+                 values[(int)(number_writes * 0.9)],
+                 values[(int)(number_writes * 0.95)],
+                 values[(int)(number_writes * 0.99)],
+                 tasks[i].max_write_latency_usec);
+          dbg("thread %d: workload time %ld, act-num-acc %ld\n", tasks[i].id,
+              tasks[i].workload_time_usec, tasks[i].actual_number_access);
+        }
       }
     }
     for (uint32_t i = 0; i < number_threads; ++i) {
       delete[] tasks[i].read_latency_usec;
       delete[] tasks[i].write_latency_usec;
-    }
     }
     // Total stats
     printf("\n----------------------- Stats --------------------\n"
