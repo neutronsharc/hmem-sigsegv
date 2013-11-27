@@ -25,6 +25,14 @@
 
 #define USE_MMAP
 
+uint64_t GetSum(std::vector<uint32_t> values) {
+  uint64_t sum = 0;
+  for (uint64_t i = 0; i < values.size(); ++i) {
+    sum += values[i];
+  }
+  return sum;
+}
+
 struct TaskItem {
   uint8_t *buffer;
   uint64_t size;
@@ -391,7 +399,7 @@ static void TestMultithreadAccess(char* flash_dir, char* hdd_file) {
                                            number_reads);
           std::sort(values.begin(), values.end());
           printf("%d\t%ld\t%ld\t%d\t%d\t%d\t%d\t%ld\n", i, number_reads,
-                 tasks[i].workload_time_usec / tasks[i].actual_number_access,
+                 GetSum(values) / tasks[i].number_reads,
                  values[(int)(number_reads * 0.5)],
                  values[(int)(number_reads * 0.9)],
                  values[(int)(number_reads * 0.95)],
@@ -411,7 +419,7 @@ static void TestMultithreadAccess(char* flash_dir, char* hdd_file) {
                                            number_writes);
           std::sort(values.begin(), values.end());
           printf("%d\t%ld\t%ld\t%d\t%d\t%d\t%d\t%ld\n", i, number_writes,
-                 tasks[i].workload_time_usec / tasks[i].actual_number_access,
+                 GetSum(values) / tasks[i].number_writes,
                  values[(int)(number_writes * 0.5)],
                  values[(int)(number_writes * 0.9)],
                  values[(int)(number_writes * 0.95)],
