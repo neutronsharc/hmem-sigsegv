@@ -445,7 +445,7 @@ int main(int argc, char **argv) {
   std::string file_name = argv[1];
   uint64_t file_size = 1024UL * 1024 * 150;
 
-  bool read = false;
+  bool read = true;
 
   SyncIOTest(file_name, file_size, read);
 
@@ -455,9 +455,9 @@ int main(int argc, char **argv) {
   //printf("\n\n***********  Group submit aio::\n");
   //GroupSubmitAsycIO(file_name, file_size, rqsts_per_batch);
 
-  //printf("\n\n***********  Deep-queue aio::\n");
-  //uint64_t queue_depth = atoi(argv[2]);
-  //FullAsycIO(file_name, file_size, queue_depth, read);
+  printf("\n\n***********  Deep-queue aio::\n");
+  uint64_t queue_depth = atoi(argv[2]);
+  FullAsycIO(file_name, file_size, queue_depth, read);
 
   printf("PASS\n");
   return 0;

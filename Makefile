@@ -1,8 +1,7 @@
 #CC = g++ -O3
 CC = g++ -g
 
-INC = -I. -I/home/ouyangx/tools/install-libevent-2.0.10/include/
-#-I/home/ouyangx/memcached/install-libmemcached-0.44/include
+INC = -I.
 CFLAGS = -c ${INC}
 LDFLAGS = -lpthread -pthread -lrt -laio
 
