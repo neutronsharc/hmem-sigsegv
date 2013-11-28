@@ -147,7 +147,7 @@ static void* AccessHybridMemoryRandomAccess(void *arg) {
       FoundPages(),
       UnFoundPages());
   // Report stats.
-  dbg("Thread %d: read-write ratio %ld: %ld reads, %ld writes, page faults=%ld\n",
+  dbg("Thread %d: read-write ratio %d: %ld reads, %ld writes, page faults=%ld\n",
       task->id,
       task->read_write_ratio,
       task->number_reads,
