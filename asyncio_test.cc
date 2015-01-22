@@ -171,6 +171,7 @@ void FullAsycIO(std::string file_name, uint64_t file_size,
   uint64_t total_accesses = file_pages;
   uint64_t issued_rqst = 0;
 
+  dbg("async io: iosize = %d\n", iosize);
   uint64_t begin_usec = NowInUsec();
   uint32_t rand_seed = (uint32_t)begin_usec;
   while (issued_rqst < total_accesses) {
@@ -443,13 +444,13 @@ int main(int argc, char **argv) {
   }
 
   std::string file_name = argv[1];
-  uint64_t file_size = 1024UL * 1024 * 150;
+  uint64_t file_size = 1024UL * 1024 * 1024;
 
   bool read = true;
 
-  SyncIOTest(file_name, file_size, read);
+  //SyncIOTest(file_name, file_size, read);
 
-  uint64_t rqsts_per_batch = 32;
+  //uint64_t rqsts_per_batch = atoi(argv[2]);
   //SimpleAsycIO(file_name, file_size, rqsts_per_batch);
 
   //printf("\n\n***********  Group submit aio::\n");
