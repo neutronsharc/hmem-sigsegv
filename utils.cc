@@ -45,3 +45,16 @@ bool IsFile(const char* path) {
   }
   return S_ISREG(sinfo.st_mode);
 }
+
+long FileSize(const char* path) {
+  struct stat sinfo;
+  if (stat(path, &sinfo) < 0) {
+    err("Unable to stat path: %s\n", path);
+    perror("stat: ");
+    return -1;
+  }
+  if (!S_ISREG(sinfo.st_mode)) {
+    return -1;
+  }
+  return sinfo.st_size;
+}

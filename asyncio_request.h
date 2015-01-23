@@ -87,6 +87,9 @@ class AsyncIORequest {
 
   void Dump();
 
+  void *reserved1;
+  void *reserved2;
+
  protected:
   bool is_active_;
 

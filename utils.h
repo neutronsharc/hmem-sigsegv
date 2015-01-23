@@ -22,4 +22,6 @@ bool IsDir(const char* path);
 
 bool IsFile(const char* path);
 
+long FileSize(const char* path);
+
 #endif  // UTILS_H_
