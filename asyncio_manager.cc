@@ -148,7 +148,10 @@ uint64_t AsyncIOManager::WaitForEventsWithTimeout(
 }
 
 uint64_t AsyncIOManager::Poll(uint64_t number_requests) {
-  return WaitForEventsWithTimeout(0, number_requests, NULL);
+  struct timespec tout;
+  tout.tv_sec = 0;
+  tout.tv_nsec = 1000000;
+  return WaitForEventsWithTimeout(0, number_requests, &tout);
 }
 
 uint64_t AsyncIOManager::Wait(uint64_t number_requests,

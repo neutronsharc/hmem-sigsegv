@@ -235,7 +235,7 @@ void FullAsycIO() {
       if (number_reads + number_writes) {
         ++issued_rqst;
       }
-      if (issued_rqst && (issued_rqst % 10000 == 0)) {
+      if (issued_rqst && (issued_rqst % 200000 == 0)) {
         dbg("issued %ld rqsts\n", issued_rqst);
       }
     }
@@ -252,9 +252,12 @@ void FullAsycIO() {
   free(data_buffer);
   std::sort(readLatency, readLatency + number_reads);
   std::sort(writeLatency, writeLatency + number_writes);
-  double read50, read90, read99, read999, readmax;
-  double write50, write90, write99, write999, writemax;
+  double readmin, read10, read20, read50, read90, read99, read999, readmax;
+  double writemin, write10, write20, write50, write90, write99, write999, writemax;
   if (number_reads > 0) {
+    readmin = readLatency[0] / 1000.0;
+    read10 = readLatency[(int)(number_reads * 0.1)] / 1000.0;
+    read20 = readLatency[(int)(number_reads * 0.2)] / 1000.0;
     read50 = readLatency[(int)(number_reads * 0.5)] / 1000.0;
     read90 = readLatency[(int)(number_reads * 0.9)] / 1000.0;
     read99 = readLatency[(int)(number_reads * 0.99)] / 1000.0;
@@ -262,6 +265,9 @@ void FullAsycIO() {
     readmax = readLatency[number_reads - 1] / 1000.0;
   }
   if (number_writes > 0) {
+    writemin = writeLatency[0] / 1000.0;
+    write10 = writeLatency[(int)(number_writes* 0.1)] / 1000.0;
+    write20 = writeLatency[(int)(number_writes* 0.2)] / 1000.0;
     write50 = writeLatency[(int)(number_writes* 0.5)] / 1000.0;
     write90 = writeLatency[(int)(number_writes* 0.9)] / 1000.0;
     write99 = writeLatency[(int)(number_writes* 0.99)] / 1000.0;
@@ -271,22 +277,22 @@ void FullAsycIO() {
 
   printf("\n=======================\n");
   printf("Full-Async-io: queue-depth=%ld, %ld ops (%ld reads, %ld writes) in %f sec, "
-         "%f ops/sec, avg-lat = %ld usec, bandwidth=%f MB/s\n",
+         "%f ops/sec, bandwidth=%f MB/s\n",
          aio_max_nr,
          numIO,
          number_reads,
          number_writes,
          total_time / 1000000.0,
          numIO / (total_time / 1000000.0),
-         total_time / numIO,
          (numIO * ioSize + 0.0) / total_time);
-  printf("Latency (ms)   50%%\t90%%\t99%%\t99.9%%\tmax\n");
+  printf("Latency (ms) min\t10%%\t20%%\t50%%\t90%%\t99%%\t99.9%%\tmax\n");
   if (number_reads > 0) {
-    printf("Read\t%f\t%f\t%f\t%f\t%f\n", read50, read90, read99, read999, readmax);
+    printf("Read\t%f\t%f\t%f\t%f\t%f\t%f\t%f\t%f\n",
+           readmin, read10, read20, read50, read90, read99, read999, readmax);
   }
   if (number_writes > 0) {
-    printf("Write\t%f\t%f\t%f\t%f\t%f\n", write50, write90, write99, write999,
-        writemax);
+    printf("Write\t%f\t%f\t%f\t%f\t%f\t%f\t%f\t%f\n",
+           writemin, write10, write20, write50, write90, write99, write999, writemax);
   }
   printf("=======================\n");
 }
