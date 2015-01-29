@@ -520,7 +520,7 @@ void help() {
   printf("parameters: \n");
   printf("-q <N>           : queue depth. Def = 128\n");
   printf("-f <filename>    : file to r/w\n");
-  printf("-w <write ratio> : 0 is no write(read-only), 0.1 is 10%% write, "
+  printf("-w <write ratio> : 0 is no write(read-only), 0.1 is 10%% write,\n"
          "                   and so on, 1 is write only. Default = 0\n");
   printf("-s <N>           : r/w size. Def = 4096. must <= 4096. \n"
          "                   R/W is always aligned to 4K boundary.\n");
