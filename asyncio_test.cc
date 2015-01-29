@@ -520,12 +520,13 @@ void help() {
   printf("parameters: \n");
   printf("-q <N>           : queue depth. Def = 128\n");
   printf("-f <filename>    : file to r/w\n");
-  printf("-w <write ratio> : 0 is no write(read-only), 0.1 is 10% write, "
-         "and so on, 1 is write only.\n");
-  printf("-s <N>           : r/w size. must <= 4096. R/W is always aligned to 4K boundary.\n");
+  printf("-w <write ratio> : 0 is no write(read-only), 0.1 is 10%% write, "
+         "                   and so on, 1 is write only. Default = 0\n");
+  printf("-s <N>           : r/w size. Def = 4096. must <= 4096. \n"
+         "                   R/W is always aligned to 4K boundary.\n");
   printf("-n <N>           : num of I/Os to perform. Def = 1000\n");
-  printf("-r <range>       : will perform IO within this range, "
-         "must <= file size.\n");
+  printf("-r <range>       : will perform IO within this range, Def = 1G\n"
+         "                   must <= file size.\n");
   printf("-h               : this message\n");
 }
 
@@ -555,7 +556,7 @@ int main(int argc, char **argv) {
         break;
       case 'n':
         numIO = atol(optarg);
-        printf("number of IO = %d\n", numIO);
+        printf("number of IO = %ld\n", numIO);
         break;
       case 'r':
         ioRange = atol(optarg);
