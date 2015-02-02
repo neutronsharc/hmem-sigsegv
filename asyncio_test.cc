@@ -12,9 +12,13 @@
 #include <unistd.h>
 
 #include <algorithm>
+#include <iostream>
+#include <iomanip>
 
 #include "asyncio_request.h"
 #include "asyncio_manager.h"
+
+using namespace std;
 
 // async IO test params.
 int queueDepth = 128;
@@ -25,25 +29,55 @@ long ioRange = 1024L * 1024 * 1024;
 char filename[1024] = {'0'};
 int *readLatency;
 int *writeLatency;
+int *perBatchRqsts;
+int ioBatchSize = 1;
+uint64_t targetQPS = 100000L;
 
 uint64_t copy_read_requests = 0;
 uint64_t copy_completions = 0;
 uint64_t copy_write_requests = 0;
 
-static void FullAsyncIOCompletion(AsyncIORequest *orig_request, int result,
-                               void *p1, void* p2) {
+
+static bool ShouldThrottleQPS(uint64_t startTimeUsec,
+                              uint64_t rqstsSoFar,
+                              uint64_t targetqps) {
+
+   uint64_t actualSpentTime = NowInUsec() - startTimeUsec;
+   uint64_t targetSpentTime = rqstsSoFar * 1000000L / targetqps;
+   return (actualSpentTime < targetSpentTime);
+}
+
+static void FullAsyncIOCompletion(AsyncIORequest *orig_request,
+                                  int result,
+                                  void *p1,
+                                  void* p2) {
   if (result != ioSize) {
     err("aio failed, ret %d != %d.\n", result, ioSize);
     return;
   }
   long lat = NowInUsec() - (long)orig_request->reserved2;
   long idxInLatencyArray = (long)orig_request->reserved1;
-  if (orig_request->io_type() == READ) {
-    readLatency[idxInLatencyArray] = lat;
-  } else {
-    writeLatency[idxInLatencyArray] = lat;
-  }
+  uint64_t idxInBatchArray = (uint64_t)(p2);
+  orig_request->finish();
 
+  perBatchRqsts[idxInBatchArray]--;
+  //dbg("rqst batch %ld: offset %ld finished. batch remin %d\n",
+  //    idxInBatchArray,
+  //    orig_request->file_offset(),
+  //    perBatchRqsts[idxInBatchArray]);
+
+  if (perBatchRqsts[idxInBatchArray] == 0) {
+    //dbg("rqst batch %ld finished, will update %s lat in %ld : %ld us\n",
+    //    idxInBatchArray,
+    //    orig_request->io_type() == READ ? "read" : "write",
+    //    idxInLatencyArray,
+    //    lat);
+    if (orig_request->io_type() == READ) {
+      readLatency[idxInLatencyArray] = lat;
+    } else {
+      writeLatency[idxInLatencyArray] = lat;
+    }
+  }
   std::vector<uint8_t* >* buffer_list = (std::vector<uint8_t*> *)p1;
   buffer_list->push_back((uint8_t*)orig_request->buffer());
 }
@@ -188,8 +222,10 @@ void FullAsycIO() {
   // To record r/w latency.
   readLatency= (int*)malloc(numIO * sizeof(int));
   writeLatency= (int*)malloc(numIO * sizeof(int));
+  perBatchRqsts = (int*)malloc(numIO * sizeof(int));
   memset(readLatency, 0, numIO * sizeof(int));
   memset(writeLatency, 0, numIO * sizeof(int));
+  memset(perBatchRqsts, 0, numIO * sizeof(int));
 
   //uint32_t iosize = PAGE_SIZE;
   uint64_t number_reads = 0;
@@ -201,42 +237,69 @@ void FullAsycIO() {
   dbg("async io: iosize = %d\n", ioSize);
   uint64_t begin_usec = NowInUsec();
   uint32_t rand_seed = (uint32_t)begin_usec;
-  int write_thresh = writeRatio * 10000;
+  int write_thresh = writeRatio * 1000000;
+  uint64_t batchIssued = 0;
+  uint64_t readBatches = 0, writeBatches = 0;
 
   while (issued_rqst < numIO) {
     while (issued_rqst < numIO &&
-           buffer_list.size() > 0 &&
-           aio_manager.number_free_requests() > 0) {
+           buffer_list.size() >= ioBatchSize &&
+           aio_manager.number_free_requests() >= ioBatchSize) {
 
-      uint64_t target_page = rand_r(&rand_seed) % file_pages;
+      if (number_completions < number_reads + number_writes) {
+        number_completions += aio_manager.Poll(1);
+      }
 
+      if (ShouldThrottleQPS(begin_usec, issued_rqst, targetQPS)) {
+        break;
+      }
       bool read = true;
-      if (rand_r(&rand_seed) % 10000 < write_thresh) {
+      if (rand_r(&rand_seed) % 1000000 < write_thresh) {
         read = false;
       }
-      AsyncIORequest *request = aio_manager.GetRequest();
-      uint8_t* buf = buffer_list.back();
-      buffer_list.pop_back();
-      request->Prepare(fd,
-                       buf,
-                       ioSize,
-                       target_page * PAGE_SIZE,
-                       read ? READ : WRITE);
-      request->AddCompletionCallback(FullAsyncIOCompletion, &buffer_list, NULL);
-      assert(aio_manager.Submit(request) == true);
-      if (read) {
-        request->reserved1 = (void*)number_reads;
-        number_reads++;
-      } else {
-        request->reserved1 = (void*)number_writes;
-        number_writes++;
-      }
-      request->reserved2 = (void*)NowInUsec();
-      if (number_reads + number_writes) {
+
+      int rqstsInBatch = std::min<int>(numIO - issued_rqst, ioBatchSize);
+      perBatchRqsts[batchIssued] = rqstsInBatch;
+
+      for (int rqst = 0; rqst < rqstsInBatch; rqst++) {
+        uint64_t target_page = rand_r(&rand_seed) % file_pages;
+
+        AsyncIORequest *request = aio_manager.GetRequest();
+        uint8_t* buf = buffer_list.back();
+        buffer_list.pop_back();
+        request->Prepare(fd,
+                         buf,
+                         ioSize,
+                         target_page * PAGE_SIZE,
+                         read ? READ : WRITE);
+        request->set_batch_size(rqstsInBatch);
+        request->AddCompletionCallback(FullAsyncIOCompletion,
+                                       &buffer_list,
+                                       (void*)batchIssued);
+        //dbg("submit rqst %ld, batch %ld\n", issued_rqst, batchIssued);
+        assert(aio_manager.Submit(request) == true);
+        if (read) {
+          request->reserved1 = (void*)(readBatches);
+          number_reads++;
+        } else {
+          request->reserved1 = (void*)(writeBatches);
+          number_writes++;
+        }
+        request->reserved2 = (void*)NowInUsec();
         ++issued_rqst;
       }
-      if (issued_rqst && (issued_rqst % 200000 == 0)) {
-        dbg("issued %ld rqsts\n", issued_rqst);
+      if (read) {
+        readBatches++;
+      } else {
+        writeBatches++;
+      }
+      batchIssued++;
+      if (issued_rqst && (batchIssued % 200000 == 0)) {
+        dbg("issued %ld rqsts in %ld batches, batch size = %d\n",
+            issued_rqst, batchIssued, rqstsInBatch);
+      }
+      if (number_completions < number_reads + number_writes) {
+        number_completions += aio_manager.Poll(1);
       }
     }
     if (number_completions < number_reads + number_writes) {
@@ -250,51 +313,87 @@ void FullAsycIO() {
   close(fd);
   assert(buffer_list.size() == aio_max_nr);
   free(data_buffer);
-  std::sort(readLatency, readLatency + number_reads);
-  std::sort(writeLatency, writeLatency + number_writes);
+
   double readmin, read10, read20, read50, read90, read99, read999, readmax;
   double writemin, write10, write20, write50, write90, write99, write999, writemax;
   if (number_reads > 0) {
+    std::sort(readLatency, readLatency + readBatches);
     readmin = readLatency[0] / 1000.0;
-    read10 = readLatency[(int)(number_reads * 0.1)] / 1000.0;
-    read20 = readLatency[(int)(number_reads * 0.2)] / 1000.0;
-    read50 = readLatency[(int)(number_reads * 0.5)] / 1000.0;
-    read90 = readLatency[(int)(number_reads * 0.9)] / 1000.0;
-    read99 = readLatency[(int)(number_reads * 0.99)] / 1000.0;
-    read999 = readLatency[(int)(number_reads * 0.999)] / 1000.0;
-    readmax = readLatency[number_reads - 1] / 1000.0;
+    read10 = readLatency[(int)(readBatches * 0.1)] / 1000.0;
+    read20 = readLatency[(int)(readBatches * 0.2)] / 1000.0;
+    read50 = readLatency[(int)(readBatches * 0.5)] / 1000.0;
+    read90 = readLatency[(int)(readBatches * 0.9)] / 1000.0;
+    read99 = readLatency[(int)(readBatches * 0.99)] / 1000.0;
+    read999 = readLatency[(int)(readBatches * 0.999)] / 1000.0;
+    readmax = readLatency[readBatches  - 1] / 1000.0;
   }
   if (number_writes > 0) {
+    std::sort(writeLatency, writeLatency + writeBatches);
     writemin = writeLatency[0] / 1000.0;
-    write10 = writeLatency[(int)(number_writes* 0.1)] / 1000.0;
-    write20 = writeLatency[(int)(number_writes* 0.2)] / 1000.0;
-    write50 = writeLatency[(int)(number_writes* 0.5)] / 1000.0;
-    write90 = writeLatency[(int)(number_writes* 0.9)] / 1000.0;
-    write99 = writeLatency[(int)(number_writes* 0.99)] / 1000.0;
-    write999 = writeLatency[(int)(number_writes* 0.999)] / 1000.0;
-    writemax = writeLatency[number_writes - 1] / 1000.0;
+    write10 = writeLatency[(int)(writeBatches * 0.1)] / 1000.0;
+    write20 = writeLatency[(int)(writeBatches * 0.2)] / 1000.0;
+    write50 = writeLatency[(int)(writeBatches * 0.5)] / 1000.0;
+    write90 = writeLatency[(int)(writeBatches * 0.9)] / 1000.0;
+    write99 = writeLatency[(int)(writeBatches * 0.99)] / 1000.0;
+    write999 = writeLatency[(int)(writeBatches * 0.999)] / 1000.0;
+    writemax = writeLatency[writeBatches - 1] / 1000.0;
   }
 
   printf("\n=======================\n");
-  printf("Full-Async-io: queue-depth=%ld, %ld ops (%ld reads, %ld writes) in %f sec, "
-         "%f ops/sec, bandwidth=%f MB/s\n",
+  printf("Full-Async-io: queue-depth=%ld, %ld ops (%ld reads, %ld writes) "
+         "in %ld batches, %d ops/batch, completed in %f sec, "
+         "%f ops/sec, bandwidth %f MB/s\n",
          aio_max_nr,
          numIO,
          number_reads,
          number_writes,
+         batchIssued,
+         ioBatchSize,
          total_time / 1000000.0,
          numIO / (total_time / 1000000.0),
          (numIO * ioSize + 0.0) / total_time);
-  printf("Latency (ms) min\t10%%\t20%%\t50%%\t90%%\t99%%\t99.9%%\tmax\n");
   if (number_reads > 0) {
-    printf("Read\t%f\t%f\t%f\t%f\t%f\t%f\t%f\t%f\n",
-           readmin, read10, read20, read50, read90, read99, read999, readmax);
+  printf("Read Latency (ms)\n");
+  cout << setw(15) << "min"
+       << setw(15) << "10 %"
+       << setw(15) << "20 %"
+       << setw(15) << "50 %"
+       << setw(15) << "90 %"
+       << setw(15) << "99 %"
+       << setw(15) << "99.9 %"
+       << setw(15) << "max" << endl;
+  cout << setw(15) << readmin
+       << setw(15) << read10
+       << setw(15) << read20
+       << setw(15) << read50
+       << setw(15) << read90
+       << setw(15) << read99
+       << setw(15) << read999
+       << setw(15) << readmax << endl;
   }
   if (number_writes > 0) {
-    printf("Write\t%f\t%f\t%f\t%f\t%f\t%f\t%f\t%f\n",
-           writemin, write10, write20, write50, write90, write99, write999, writemax);
+  printf("Write Latency (ms)\n");
+  cout << setw(15) << "min"
+       << setw(15) << "10 %"
+       << setw(15) << "20 %"
+       << setw(15) << "50 %"
+       << setw(15) << "90 %"
+       << setw(15) << "99 %"
+       << setw(15) << "99.9 %"
+       << setw(15) << "max" << endl;
+  cout << setw(15) << writemin
+       << setw(15) << write10
+       << setw(15) << write20
+       << setw(15) << write50
+       << setw(15) << write90
+       << setw(15) << write99
+       << setw(15) << write999
+       << setw(15) << writemax << endl;
   }
   printf("=======================\n");
+  free(perBatchRqsts);
+  free(readLatency);
+  free(writeLatency);
 }
 
 // async-io, submit a group of request at a time.
@@ -520,12 +619,14 @@ void help() {
   printf("parameters: \n");
   printf("-q <N>           : queue depth. Def = 128\n");
   printf("-f <filename>    : file to r/w\n");
-  printf("-w <write ratio> : 0 is no write(read-only), 0.1 is 10%% write,\n"
-         "                   and so on, 1 is write only. Default = 0\n");
-  printf("-s <N>           : r/w size. Def = 4096. must <= 4096. \n"
+  printf("-w <write ratio> : 0 is no write(read-only), 0.1 is 10% write,\n"
+         "                   and so on, 1 is write only.\n");
+  printf("-z <N>           : r/w size. must <= 4096. Def to 4096. \n"
          "                   R/W is always aligned to 4K boundary.\n");
   printf("-n <N>           : num of I/Os to perform. Def = 1000\n");
-  printf("-r <range>       : will perform IO within this range, Def = 1G\n"
+  printf("-b <batch size>  : How many requests in a batch. Def to 1.\n");
+  printf("-p <qps>         : target QPS.  Def = 1000000.\n");
+  printf("-r <range>       : will perform IO within this range. Def to 1 GB\n"
          "                   must <= file size.\n");
   printf("-h               : this message\n");
 }
@@ -537,7 +638,7 @@ int main(int argc, char **argv) {
     return 0;
   }
 
-  while ((c = getopt(argc, argv, "hq:f:w:s:n:r:")) != EOF) {
+  while ((c = getopt(argc, argv, "hq:f:w:z:n:r:b:p:")) != EOF) {
     switch(c) {
       case 'h':
         help();
@@ -546,11 +647,19 @@ int main(int argc, char **argv) {
         queueDepth = atoi(optarg);
         printf("queue depth = %d\n", queueDepth);
         break;
+      case 'p':
+        targetQPS = atol(optarg);
+        printf("target qps = %ld\n", targetQPS);
+        break;
+      case 'b':
+        ioBatchSize = atoi(optarg);
+        printf("%d requests in a batch\n", ioBatchSize);
+        break;
       case 'w':
         writeRatio = atof(optarg);
         printf("write ratio = %f\n", writeRatio);
         break;
-      case 's':
+      case 'z':
         ioSize = atoi(optarg);
         printf("io size = %d\n", ioSize);
         break;

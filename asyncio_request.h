@@ -42,7 +42,7 @@ typedef void (*AsyncIOCompletion)(AsyncIORequest*, int, void*, void*);
 // This class  represent an async IO request.
 class AsyncIORequest {
  public:
-  AsyncIORequest() : is_active_(false) {}
+  AsyncIORequest() : is_active_(false), unfinishedRequestsInBatch_(0) {}
 
   ~AsyncIORequest() {}
 
@@ -58,6 +58,17 @@ class AsyncIORequest {
   void set_asyncio_manager(AsyncIOManager *manager) {
     asyncio_manager_ = manager;
   }
+
+  void set_batch_size(int batch_size) {
+    batchSize_ = batch_size;
+    unfinishedRequestsInBatch_ = batch_size;
+  }
+
+  int get_batch_size() { return batchSize_; }
+
+  void finish() { unfinishedRequestsInBatch_--; }
+
+  bool is_batch_finished() { return unfinishedRequestsInBatch_ == 0; }
 
   const bool is_active() const { return is_active_; }
 
@@ -90,6 +101,9 @@ class AsyncIORequest {
   void *reserved1;
   void *reserved2;
 
+  // how many requests are not finished yet in a batch.
+  int unfinishedRequestsInBatch_;
+
  protected:
   bool is_active_;
 
@@ -110,6 +124,9 @@ class AsyncIORequest {
 
   // Type of the IO: read/write.
   IOType io_type_;
+
+  // how many requests in a batch.
+  int batchSize_;
 
   std::vector<AsyncIOCompletion> completion_callbacks_;
   std::vector<void*> completion_callbacks_param1_;
