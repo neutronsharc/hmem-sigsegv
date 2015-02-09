@@ -264,6 +264,7 @@ void FullAsycIO() {
       int rqstsInBatch = std::min<int>(numIO - issued_rqst, ioBatchSize);
       perBatchRqsts[batchIssued] = rqstsInBatch;
 
+      uint64_t batchStartTime = NowInUsec();
       for (int rqst = 0; rqst < rqstsInBatch; rqst++) {
         uint64_t target_page = rand_r(&rand_seed) % file_pages;
 
@@ -288,7 +289,7 @@ void FullAsycIO() {
           request->reserved1 = (void*)(writeBatches);
           number_writes++;
         }
-        request->reserved2 = (void*)NowInUsec();
+        request->reserved2 = (void*)batchStartTime;
         ++issued_rqst;
       }
       if (read) {
