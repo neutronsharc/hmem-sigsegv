@@ -247,7 +247,10 @@ void FullAsycIO() {
            aio_manager.number_free_requests() >= ioBatchSize) {
 
       if (number_completions < number_reads + number_writes) {
-        number_completions += aio_manager.Poll(1);
+        int i;
+        while ((i = aio_manager.Poll(1)) > 0) {
+          number_completions += 1;
+        }
       }
 
       if (ShouldThrottleQPS(begin_usec, issued_rqst, targetQPS)) {
@@ -299,11 +302,17 @@ void FullAsycIO() {
             issued_rqst, batchIssued, rqstsInBatch);
       }
       if (number_completions < number_reads + number_writes) {
-        number_completions += aio_manager.Poll(1);
+        int i;
+        while ((i = aio_manager.Poll(1)) > 0) {
+          number_completions += 1;
+        }
       }
     }
     if (number_completions < number_reads + number_writes) {
-      number_completions += aio_manager.Poll(1);
+      int i;
+      while ((i = aio_manager.Poll(1)) > 0) {
+        number_completions += 1;
+      }
     }
   }
   while (number_completions < number_reads + number_writes) {
